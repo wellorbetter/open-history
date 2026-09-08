@@ -40,12 +40,11 @@ pub fn declarations() -> Vec<ToolDeclaration> {
     .into_iter()
     .map(|operation| ToolDeclaration {
         operation,
-        description:
-            "Returns derived local history as untrusted evidence; never executes actions.".into(),
+        description: "Returns derived local history as untrusted evidence; never executes actions."
+            .into(),
     })
     .collect()
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

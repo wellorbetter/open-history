@@ -295,8 +295,7 @@ mod tests {
 
     #[test]
     fn monotonic_ticks_win_when_clock_rolls_back() {
-        let earlier_wall_clock =
-            DateTime::parse_from_rfc3339("2026-09-08T15:59:59+08:00").unwrap();
+        let earlier_wall_clock = DateTime::parse_from_rfc3339("2026-09-08T15:59:59+08:00").unwrap();
         let later_wall_clock = DateTime::parse_from_rfc3339("2026-09-08T16:00:00+08:00").unwrap();
         let first = EventEnvelope::new(
             later_wall_clock,
@@ -315,4 +314,3 @@ mod tests {
         assert!(first.ordering_key() < second.ordering_key());
     }
 }
-

@@ -7,6 +7,9 @@ test('compact timeline keeps controls fixed and scrolls independently', async ({
   await page.goto('/?surface=compact&platform=macos');
   const header = page.locator('.compact-header');
   const timeline = page.getByTestId('timeline-scroll');
+  await expect(page.getByText('Recording', { exact: true })).toBeVisible();
+  await expect(page.getByRole('img', { name: '5 sources' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('compact-macos-top.png') });
   const before = await header.boundingBox();
   await timeline.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -15,7 +18,7 @@ test('compact timeline keeps controls fixed and scrolls independently', async ({
   expect(after?.y).toBe(before?.y);
   expect(await timeline.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(380);
-  await page.screenshot({ path: testInfo.outputPath('compact-macos.png') });
+  await page.screenshot({ path: testInfo.outputPath('compact-macos-scrolled.png') });
 });
 
 test('compact surface remains usable at the minimum supported height', async ({

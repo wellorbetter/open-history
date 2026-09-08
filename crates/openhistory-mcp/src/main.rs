@@ -3,4 +3,3 @@
 fn main() {
     eprintln!("openhistory-mcp: connect through the approved local OpenHistory client channel");
 }
-

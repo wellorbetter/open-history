@@ -3,9 +3,10 @@
 mod dashboard;
 mod tray;
 
-use tauri::{Manager, WindowEvent};
+use tauri::WindowEvent;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Starts the OpenHistory desktop shell and registers its tray and IPC handlers.
 pub fn run() {
     let builder = tauri::Builder::default()
         .manage(dashboard::DashboardState::default())
@@ -38,4 +39,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("failed to run OpenHistory desktop application");
 }
-

@@ -114,7 +114,10 @@ mod tests {
         let (sender, mut receiver) = bounded_event_channel(2);
         let mut adapter = FakeAdapter::new(Vec::new()).with_fault(AdapterError::Unavailable);
         adapter.start(sender.clone()).await.unwrap();
-        assert_eq!(receiver.recv().await.unwrap(), Err(AdapterError::Unavailable));
+        assert_eq!(
+            receiver.recv().await.unwrap(),
+            Err(AdapterError::Unavailable)
+        );
         assert!(adapter.is_running());
         adapter.stop().await.unwrap();
         assert!(!adapter.is_running());
@@ -124,4 +127,3 @@ mod tests {
         assert!(restarted.is_running());
     }
 }
-

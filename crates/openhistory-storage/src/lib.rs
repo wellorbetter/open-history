@@ -21,7 +21,6 @@ pub enum StorageError {
     #[error("transaction was rolled back")]
     RolledBack,
 }
-
 /// Supported raw-event retention settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RetentionPolicy {
@@ -149,4 +148,3 @@ mod tests {
         assert_eq!(repository.events().len(), 1);
     }
 }
-

@@ -16,7 +16,6 @@ pub struct HistoryQuery {
     /// Requested maximum, clamped to [`MAX_QUERY_LIMIT`].
     pub limit: u16,
 }
-
 impl HistoryQuery {
     /// Returns a copy with a safe record bound.
     #[must_use]
@@ -59,4 +58,3 @@ mod tests {
         assert_eq!(query.bounded().limit, MAX_QUERY_LIMIT);
     }
 }
-

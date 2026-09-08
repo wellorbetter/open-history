@@ -1292,24 +1292,13 @@ button.current-card:active {
   }
 }
 
-@media (max-width: 440px) {
-  .compact-shell {
-    width: 100vw;
-    border-radius: 0;
-  }
-
+@media (max-width: 359px) {
   .status-badge span {
     display: none;
   }
+}
 
-  .current-card {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .current-actions {
-    display: none;
-  }
-
+@media (max-width: 440px) {
   .privacy-promise {
     grid-template-columns: 1fr;
   }
@@ -1405,6 +1394,22 @@ button.current-card:active {
   .settings-card,
   .promise-item {
     background: var(--surface-solid);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --text-secondary: #465149;
+    --text-tertiary: #58645c;
+    --border: rgba(24, 51, 37, 0.34);
+    --border-strong: rgba(24, 51, 37, 0.52);
+  }
+
+  .timeline-row,
+  .current-card,
+  .history-result,
+  .settings-card {
+    border-color: var(--border);
   }
 }
 

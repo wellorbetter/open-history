@@ -13,7 +13,6 @@ pub struct PrivacyPolicy {
     /// Exact hosts or parent domains.
     pub websites: Vec<String>,
 }
-
 /// Minimal candidate context. It must be dropped immediately after evaluation.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CandidateContext<'a> {
@@ -162,4 +161,3 @@ mod tests {
         );
     }
 }
-

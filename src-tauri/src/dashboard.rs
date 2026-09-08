@@ -34,7 +34,10 @@ pub fn set_collection_status(
     state: State<'_, DashboardState>,
     app: AppHandle,
 ) -> Result<CollectionStatus, String> {
-    if matches!(status, CollectionStatus::PermissionNeeded | CollectionStatus::Error) {
+    if matches!(
+        status,
+        CollectionStatus::PermissionNeeded | CollectionStatus::Error
+    ) {
         return Err("collection cannot be started until permission is restored".to_owned());
     }
     *state
@@ -44,7 +47,6 @@ pub fn set_collection_status(
     let _ = app.emit("collection-status-changed", status);
     Ok(status)
 }
-
 #[tauri::command]
 pub fn open_history_window(app: AppHandle, segment_id: Option<String>) -> Result<(), String> {
     let window = app
@@ -112,4 +114,3 @@ mod tests {
         assert_eq!(snapshot["privacy"]["rawRetentionHours"], 48);
     }
 }
-

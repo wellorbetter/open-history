@@ -75,7 +75,9 @@ pub fn segment_events(
 
         let starts_new = groups.last().is_none_or(|current| {
             current.last().is_some_and(|previous| {
-                event.occurred_at.signed_duration_since(previous.occurred_at)
+                event
+                    .occurred_at
+                    .signed_duration_since(previous.occurred_at)
                     > settings.idle_boundary
                     || continuity_score(previous, &event) < settings.continuity_threshold
                     || explicit_project_change(previous, &event)
@@ -193,8 +195,8 @@ fn project_group(events: Vec<EventEnvelope>) -> Option<TaskSegment> {
 mod tests {
     use chrono::DateTime;
     use openhistory_domain::{
-        AdapterKind, ApplicationIdentity, PrivacyClassification, RedactionFlag, SourceIdentity,
-        EVENT_SCHEMA_VERSION,
+        AdapterKind, ApplicationIdentity, EVENT_SCHEMA_VERSION, PrivacyClassification,
+        RedactionFlag, SourceIdentity,
     };
     use uuid::Uuid;
 
@@ -250,7 +252,10 @@ mod tests {
             event(2, 1, "Editor", Some("beta")),
             event(3, 8, "Editor", Some("beta")),
         ];
-        assert_eq!(segment_events(&events, SegmentationSettings::default()).len(), 3);
+        assert_eq!(
+            segment_events(&events, SegmentationSettings::default()).len(),
+            3
+        );
     }
 
     #[test]
@@ -261,4 +266,3 @@ mod tests {
         assert_eq!(segment[0].confidence, SegmentConfidence::Low);
     }
 }
-

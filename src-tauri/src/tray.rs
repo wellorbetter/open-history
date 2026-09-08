@@ -17,8 +17,7 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
     tray.build(app)?;
     Ok(())
 }
-
-pub fn handle_event(app: &AppHandle, event: &TrayIconEvent) {
+pub fn handle_event(app: &AppHandle, event: TrayIconEvent) {
     if let TrayIconEvent::Click {
         position,
         button: MouseButton::Left,
@@ -26,7 +25,7 @@ pub fn handle_event(app: &AppHandle, event: &TrayIconEvent) {
         ..
     } = event
     {
-        let _ = toggle_compact(app, *position);
+        let _ = toggle_compact(app, position);
     }
 }
 
@@ -78,4 +77,3 @@ mod tests {
         assert!(WORK_AREA_MARGIN > 0.0);
     }
 }
-

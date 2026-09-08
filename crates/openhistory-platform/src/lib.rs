@@ -14,7 +14,6 @@ pub struct CollectionGate {
     /// Platform permission probe currently succeeds.
     pub platform_permission: bool,
 }
-
 impl CollectionGate {
     /// Collection can run only while both controls are positive.
     #[must_use]
@@ -100,4 +99,3 @@ mod tests {
         assert!(!adapter.is_running());
     }
 }
-

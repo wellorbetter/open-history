@@ -51,8 +51,12 @@ mod tests {
 
     #[test]
     fn v1_surface_contains_only_read_operations() {
-        assert_eq!(declarations().len(), 5);
-        let encoded = serde_json::to_string(&declarations()).unwrap();
+        let operations = declarations()
+            .into_iter()
+            .map(|declaration| declaration.operation)
+            .collect::<Vec<_>>();
+        assert_eq!(operations.len(), 5);
+        let encoded = serde_json::to_string(&operations).unwrap();
         assert!(!encoded.contains("delete"));
         assert!(!encoded.contains("execute"));
     }

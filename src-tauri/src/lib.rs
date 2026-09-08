@@ -31,11 +31,11 @@ pub fn run() {
             if window.label() == "compact" && matches!(event, WindowEvent::Focused(false)) {
                 let _ = window.hide();
             }
-            if window.label() == "compact" {
-                if let WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = window.hide();
-                }
+            if window.label() == "compact"
+                && let WindowEvent::CloseRequested { api, .. } = event
+            {
+                api.prevent_close();
+                let _ = window.hide();
             }
         });
 

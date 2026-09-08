@@ -23,6 +23,7 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
     Ok(())
 }
 /// Handles primary tray clicks and toggles the compact surface.
+#[allow(clippy::needless_pass_by_value)]
 pub fn handle_event(app: &AppHandle, event: TrayIconEvent) {
     if let TrayIconEvent::Click {
         position,
@@ -56,7 +57,7 @@ fn toggle_compact(app: &AppHandle, anchor: PhysicalPosition<f64>) -> tauri::Resu
         let bottom = top + f64::from(area.size.height);
         let width = f64::from(size.width);
         let height = f64::from(size.height);
-        let x = (anchor.x - width / 2.0).clamp(left + 8.0, right - width - 8.0);
+        let x = clamp_coordinate(anchor.x - width / 2.0, left + 8.0, right - width - 8.0);
 
         #[cfg(target_os = "macos")]
         let desired_y = anchor.y + 8.0;
@@ -67,19 +68,30 @@ fn toggle_compact(app: &AppHandle, anchor: PhysicalPosition<f64>) -> tauri::Resu
             anchor.y - height - 8.0
         };
 
-        let y = desired_y.clamp(top + 8.0, bottom - height - 8.0);
-        window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32))?;
+        let y = clamp_coordinate(desired_y, top + 8.0, bottom - height - 8.0);
+        window.set_position(PhysicalPosition::new(rounded_physical(x), rounded_physical(y)))?;
     }
     window.show()?;
     window.set_focus()?;
     Ok(())
 }
 
+fn clamp_coordinate(value: f64, minimum: f64, maximum: f64) -> f64 {
+    value.clamp(minimum, maximum.max(minimum))
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn rounded_physical(value: f64) -> i32 {
+    value
+        .round()
+        .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
-    fn window_margin_is_positive() {
-        const WORK_AREA_MARGIN: f64 = 8.0;
-        assert!(WORK_AREA_MARGIN > 0.0);
+    fn coordinate_is_clamped_inside_work_area() {
+        assert_eq!(clamp_coordinate(900.0, 8.0, 812.0), 812.0);
+        assert_eq!(clamp_coordinate(-20.0, 8.0, 812.0), 8.0);
     }
 }

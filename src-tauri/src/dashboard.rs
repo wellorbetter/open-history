@@ -26,6 +26,7 @@ pub struct DashboardState {
 }
 
 #[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
 /// Returns the least-sensitive dashboard projection.
 ///
 /// # Errors
@@ -40,6 +41,7 @@ pub fn get_dashboard(state: State<'_, DashboardState>) -> Result<Value, String> 
 }
 
 #[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
 /// Updates collection state and broadcasts the change to visible windows.
 ///
 /// # Errors
@@ -64,6 +66,7 @@ pub fn set_collection_status(
     Ok(status)
 }
 #[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
 /// Shows the full history window and optionally requests a segment.
 ///
 /// # Errors
@@ -82,6 +85,7 @@ pub fn open_history_window(app: AppHandle, segment_id: Option<String>) -> Result
 }
 
 #[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
 /// Emits a validated, explicitly scoped history-deletion request.
 ///
 /// # Errors

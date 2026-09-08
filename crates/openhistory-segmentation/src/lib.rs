@@ -91,7 +91,10 @@ pub fn segment_events(
         }
     }
 
-    groups.into_iter().filter_map(project_group).collect()
+    groups
+        .iter()
+        .filter_map(|group| project_group(group))
+        .collect()
 }
 
 /// Calculates continuity using only allowed, explicit evidence.
@@ -102,7 +105,8 @@ pub fn continuity_score(previous: &EventEnvelope, next: &EventEnvelope) -> f32 {
         .signed_duration_since(previous.occurred_at)
         .num_seconds()
         .unsigned_abs();
-    let time_score = 1.0 - (seconds.min(300) as f32 / 300.0);
+    let bounded_seconds = u16::try_from(seconds.min(300)).expect("bounded to five minutes");
+    let time_score = 1.0 - (f32::from(bounded_seconds) / 300.0);
     let same_application = (previous.source.application.platform_id.is_some()
         && previous.source.application.platform_id == next.source.application.platform_id)
         || (previous.source.application.display_name.is_some()
@@ -145,7 +149,7 @@ fn is_closing_boundary(payload: &SemanticPayload) -> bool {
     )
 }
 
-fn project_group(events: Vec<EventEnvelope>) -> Option<TaskSegment> {
+fn project_group(events: &[EventEnvelope]) -> Option<TaskSegment> {
     let first = events.first()?;
     let last = events.last()?;
     let mut applications = BTreeSet::new();

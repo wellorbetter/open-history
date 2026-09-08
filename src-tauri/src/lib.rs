@@ -1,4 +1,4 @@
-//! Native OpenHistory application shell.
+//! Native `OpenHistory` application shell.
 
 mod dashboard;
 mod tray;
@@ -6,7 +6,7 @@ mod tray;
 use tauri::WindowEvent;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-/// Starts the OpenHistory desktop shell and registers its tray and IPC handlers.
+/// Starts the `OpenHistory` desktop shell and registers its tray and IPC handlers.
 pub fn run() {
     let builder = tauri::Builder::default()
         .manage(dashboard::DashboardState::default())

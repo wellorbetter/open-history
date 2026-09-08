@@ -1,6 +1,6 @@
 //! Storage contracts and a deterministic in-memory backend for core and UI tests.
 //!
-//! The production SQLCipher backend is introduced behind this contract so no unencrypted fallback
+//! The production `SQLCipher` backend is introduced behind this contract so no unencrypted fallback
 //! can be selected accidentally.
 
 use std::collections::BTreeMap;

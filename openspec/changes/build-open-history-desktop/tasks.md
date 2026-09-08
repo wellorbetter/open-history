@@ -1,16 +1,16 @@
 ## 1. Repository and Toolchain Foundation
 
-- [ ] 1.1 Scaffold the Tauri 2 desktop package, React/TypeScript UI, and Rust workspace crates for domain, storage, segmentation, summarization, platform adapters, API, and MCP; verify clean Rust and frontend builds on the development host.
+- [x] 1.1 Scaffold the Tauri 2 desktop package, React/TypeScript UI, and Rust workspace crates for domain, storage, segmentation, summarization, platform adapters, API, and MCP; verify clean Rust and frontend builds on the development host.
 - [ ] 1.2 Add pinned formatting, linting, unit-test, and dependency-audit commands; verify the commands fail on intentional fixture violations and pass after reverting them.
-- [ ] 1.3 Add macOS and Windows CI matrices for Rust, frontend, and packaging checks; verify both jobs reach the unsigned artifact stage from a clean checkout.
+- [x] 1.3 Add macOS and Windows CI matrices for Rust, frontend, and packaging checks; verify both jobs reach the unsigned artifact stage from a clean checkout.
 - [ ] 1.4 Add project architecture, privacy model, contribution, and local development documentation; verify every documented setup command works in a clean temporary checkout.
 
 ## 2. Canonical Event Domain
 
-- [ ] 2.1 Implement the versioned canonical event envelope and typed semantic payloads; verify serialization round trips and compatibility fixtures for every V1 event kind.
-- [ ] 2.2 Implement source identity, capture-quality, privacy-classification, redaction, and correlation metadata; verify missing and partial platform data is represented without fabricated values.
+- [x] 2.1 Implement the versioned canonical event envelope and typed semantic payloads; verify serialization round trips and compatibility fixtures for every V1 event kind.
+- [x] 2.2 Implement source identity, capture-quality, privacy-classification, redaction, and correlation metadata; verify missing and partial platform data is represented without fabricated values.
 - [ ] 2.3 Implement monotonic ordering and local timestamp/time-zone normalization; verify daylight-saving changes, clock rollback, late arrival, and equal timestamp fixtures.
-- [ ] 2.4 Define the platform adapter contract and bounded event channel; verify fake adapters can be started, stopped, faulted, and restarted without blocking the core.
+- [x] 2.4 Define the platform adapter contract and bounded event channel; verify fake adapters can be started, stopped, faulted, and restarted without blocking the core.
 
 ## 3. Privacy Policy and Encrypted Storage
 
@@ -41,10 +41,10 @@
 
 - [ ] 6.1 Create semantic color, typography, spacing, radius, material, motion, and focus tokens with macOS and Windows variants; verify light, dark, increased-contrast, reduced-transparency, and reduced-motion fixture pages.
 - [ ] 6.2 Build reusable status, source-icon stack, current-activity card, timeline row, date navigation, empty/error/loading, and destructive-confirmation components; verify keyboard and screen-reader component tests plus long-title and many-source snapshots.
-- [ ] 6.3 Build the fixture-driven compact route at the specified macOS and Windows logical sizes; verify header controls remain fixed, timeline scroll remains independent, and all content fits low-height work areas.
+- [x] 6.3 Build the fixture-driven compact route at the specified macOS and Windows logical sizes; verify header controls remain fixed, timeline scroll remains independent, and all content fits low-height work areas.
 - [ ] 6.4 Build the resizable full history window with date navigation, search/results, task inspector, settings, export, and deletion flows; verify behavior at minimum, default, and expanded window sizes.
 - [ ] 6.5 Connect UI state to typed Tauri commands and event subscriptions using a fake core; verify recording, paused, permission-needed, adapter-error, current-task, deletion, and summary-revision interaction tests.
-- [ ] 6.6 Run visual and accessibility review against the supplied WeekLens reference and platform variants; verify contrast thresholds, desktop control sizes, focus order, truncation recovery, and opaque reduced-transparency rendering.
+- [x] 6.6 Run visual and accessibility review against the supplied WeekLens reference and platform variants; verify contrast thresholds, desktop control sizes, focus order, truncation recovery, and opaque reduced-transparency rendering.
 
 ## 7. macOS Collection and Menu-Bar Integration
 

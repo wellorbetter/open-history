@@ -105,7 +105,7 @@ pub fn continuity_score(previous: &EventEnvelope, next: &EventEnvelope) -> f32 {
         .signed_duration_since(previous.occurred_at)
         .num_seconds()
         .unsigned_abs();
-    let bounded_seconds = u16::try_from(seconds.min(300)).expect("bounded to five minutes");
+    let bounded_seconds = u16::try_from(seconds.min(300)).unwrap_or(300);
     let time_score = 1.0 - (f32::from(bounded_seconds) / 300.0);
     let same_application = (previous.source.application.platform_id.is_some()
         && previous.source.application.platform_id == next.source.application.platform_id)

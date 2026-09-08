@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn coordinate_is_clamped_inside_work_area() {
-        assert_eq!(clamp_coordinate(900.0, 8.0, 812.0), 812.0);
-        assert_eq!(clamp_coordinate(-20.0, 8.0, 812.0), 8.0);
+        assert!((clamp_coordinate(900.0, 8.0, 812.0) - 812.0).abs() < f64::EPSILON);
+        assert!((clamp_coordinate(-20.0, 8.0, 812.0) - 8.0).abs() < f64::EPSILON);
     }
 }

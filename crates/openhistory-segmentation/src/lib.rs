@@ -157,7 +157,7 @@ fn project_group(events: &[EventEnvelope]) -> Option<TaskSegment> {
     let mut quality = CaptureQuality::Enriched;
     let mut shared_project: Option<String> = None;
 
-    for event in &events {
+    for event in events {
         event_ids.push(event.event_id.to_string());
         quality = quality.min(event.quality);
         if let Some(name) = &event.source.application.display_name {

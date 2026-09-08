@@ -69,7 +69,10 @@ fn toggle_compact(app: &AppHandle, anchor: PhysicalPosition<f64>) -> tauri::Resu
         };
 
         let y = clamp_coordinate(desired_y, top + 8.0, bottom - height - 8.0);
-        window.set_position(PhysicalPosition::new(rounded_physical(x), rounded_physical(y)))?;
+        window.set_position(PhysicalPosition::new(
+            rounded_physical(x),
+            rounded_physical(y),
+        ))?;
     }
     window.show()?;
     window.set_focus()?;

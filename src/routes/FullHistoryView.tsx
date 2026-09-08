@@ -65,6 +65,7 @@ export function FullHistoryView({ initial = dashboardFixture }: { initial?: Dash
             className={section === 'history' ? 'nav-item is-active' : 'nav-item'}
             type="button"
             onClick={() => setSection('history')}
+            aria-current={section === 'history' ? 'page' : undefined}
           >
             <History size={17} aria-hidden="true" /> History
           </button>
@@ -72,6 +73,7 @@ export function FullHistoryView({ initial = dashboardFixture }: { initial?: Dash
             className={section === 'settings' ? 'nav-item is-active' : 'nav-item'}
             type="button"
             onClick={() => setSection('settings')}
+            aria-current={section === 'settings' ? 'page' : undefined}
           >
             <Settings size={17} aria-hidden="true" /> Settings
           </button>
@@ -167,8 +169,8 @@ function HistoryResult({
         <span aria-hidden="true" />
       </span>
       <span className="history-result-copy">
-        <strong>{segment.title}</strong>
-        <span>{segment.summary}</span>
+        <strong title={segment.title}>{segment.title}</strong>
+        <span title={segment.summary}>{segment.summary}</span>
         <small>
           {segment.durationMinutes} min · {segment.category}
         </small>

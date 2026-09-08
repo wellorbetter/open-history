@@ -1,4 +1,4 @@
-//! Stable, versioned domain types shared by every OpenHistory adapter and consumer.
+//! Stable, versioned domain types shared by every `OpenHistory` adapter and consumer.
 
 use std::cmp::Ordering;
 
@@ -86,7 +86,7 @@ pub struct SourceIdentity {
 pub enum AdapterKind {
     /// macOS Accessibility and workspace notifications.
     MacOsAccessibility,
-    /// Windows UI Automation and WinEvent notifications.
+    /// Windows UI Automation and `WinEvent` notifications.
     WindowsAutomation,
     /// Separately consented browser extension.
     BrowserExtension,

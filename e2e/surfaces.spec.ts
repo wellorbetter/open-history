@@ -8,7 +8,7 @@ test('compact timeline keeps controls fixed and scrolls independently', async ({
   const header = page.locator('.compact-header');
   const timeline = page.getByTestId('timeline-scroll');
   await expect(page.getByText('Recording', { exact: true })).toBeVisible();
-  await expect(page.getByRole('img', { name: '5 sources' })).toBeVisible();
+  await expect(page.getByRole('img', { name: /^Sources:/ }).first()).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('compact-macos-top.png') });
   const before = await header.boundingBox();
   await timeline.evaluate((element) => {

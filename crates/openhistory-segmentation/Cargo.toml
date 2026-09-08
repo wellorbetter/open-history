@@ -1,0 +1,17 @@
+[package]
+name = "openhistory-segmentation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+blake3.workspace = true
+chrono.workspace = true
+openhistory-domain = { path = "../openhistory-domain" }
+serde.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true
+
+[lints]
+workspace = true

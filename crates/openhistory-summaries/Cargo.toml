@@ -1,0 +1,15 @@
+[package]
+name = "openhistory-summaries"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+openhistory-segmentation = { path = "../openhistory-segmentation" }
+serde.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

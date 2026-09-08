@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/openhistory-domain",
+  "crates/openhistory-adapters",
+  "crates/openhistory-platform",
+  "crates/openhistory-privacy",
+  "crates/openhistory-storage",
+  "crates/openhistory-segmentation",
+  "crates/openhistory-summaries",
+  "crates/openhistory-api",
+  "crates/openhistory-mcp",
+  "src-tauri"
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+
+[workspace.dependencies]
+async-trait = "0.1.89"
+blake3 = "1.8.2"
+chrono = { version = "0.4.42", features = ["serde"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.17"
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "sync", "time"] }
+url = { version = "2.5.7", features = ["serde"] }
+uuid = { version = "1.18.1", features = ["v4", "v7", "serde"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"

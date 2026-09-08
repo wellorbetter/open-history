@@ -92,6 +92,8 @@ fn rounded_physical(value: f64) -> i32 {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn coordinate_is_clamped_inside_work_area() {
         assert_eq!(clamp_coordinate(900.0, 8.0, 812.0), 812.0);

@@ -48,12 +48,24 @@ pub struct DeletionReport {
 /// Minimal repository operations used by the deterministic core.
 pub trait HistoryRepository {
     /// Persists an already allowed and minimized event.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when encrypted storage is unavailable or the transaction fails.
     fn insert_event(&mut self, event: EventEnvelope) -> Result<(), StorageError>;
     /// Replaces a derived projection while preserving raw events.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when encrypted storage is unavailable or the transaction fails.
     fn upsert_segment(&mut self, segment: TaskSegment) -> Result<(), StorageError>;
     /// Returns allowed events ordered by stable event key.
     fn events(&self) -> Vec<EventEnvelope>;
     /// Deletes expired raw events and returns counts only.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when cleanup cannot complete transactionally.
     fn sweep_retention(
         &mut self,
         now: DateTime<FixedOffset>,

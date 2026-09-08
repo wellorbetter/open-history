@@ -4,22 +4,33 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+/// Current state of semantic activity collection.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CollectionStatus {
+    /// Semantic collection is active.
     #[default]
     Recording,
+    /// Collection was paused by the user.
     Paused,
+    /// Operating-system permission must be restored.
     PermissionNeeded,
+    /// The native adapter needs attention.
     Error,
 }
 
+/// Shared state exposed through the narrow dashboard command surface.
 #[derive(Default)]
 pub struct DashboardState {
     status: Mutex<CollectionStatus>,
 }
 
 #[tauri::command]
+/// Returns the least-sensitive dashboard projection.
+///
+/// # Errors
+///
+/// Returns an error when the collection state lock is unavailable.
 pub fn get_dashboard(state: State<'_, DashboardState>) -> Result<Value, String> {
     let status = *state
         .status
@@ -29,6 +40,11 @@ pub fn get_dashboard(state: State<'_, DashboardState>) -> Result<Value, String> 
 }
 
 #[tauri::command]
+/// Updates collection state and broadcasts the change to visible windows.
+///
+/// # Errors
+///
+/// Returns an error when permission is missing, the adapter is unhealthy, or the state lock fails.
 pub fn set_collection_status(
     status: CollectionStatus,
     state: State<'_, DashboardState>,
@@ -48,6 +64,11 @@ pub fn set_collection_status(
     Ok(status)
 }
 #[tauri::command]
+/// Shows the full history window and optionally requests a segment.
+///
+/// # Errors
+///
+/// Returns an error when the history window is absent or cannot be shown or focused.
 pub fn open_history_window(app: AppHandle, segment_id: Option<String>) -> Result<(), String> {
     let window = app
         .get_webview_window("history")
@@ -61,6 +82,11 @@ pub fn open_history_window(app: AppHandle, segment_id: Option<String>) -> Result
 }
 
 #[tauri::command]
+/// Emits a validated, explicitly scoped history-deletion request.
+///
+/// # Errors
+///
+/// Returns an error when the requested deletion scope is unsupported.
 pub fn delete_history(scope: &str, app: AppHandle) -> Result<(), String> {
     if !matches!(scope, "last_10_minutes" | "last_hour" | "today" | "all") {
         return Err("unsupported deletion scope".to_owned());

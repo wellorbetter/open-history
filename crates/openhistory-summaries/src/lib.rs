@@ -85,6 +85,10 @@ pub enum SummaryError {
 #[async_trait]
 pub trait Summarizer: Send + Sync {
     /// Returns structured enrichment without mutating source segments.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SummaryError`] when the provider times out or returns invalid output.
     async fn summarize(&self, request: &SummaryRequest) -> Result<SummaryOutput, SummaryError>;
 }
 
@@ -111,6 +115,11 @@ pub fn build_minimized_prompt(request: &SummaryRequest) -> String {
 }
 
 /// Rejects oversized or ungrounded output before saving a revision.
+///
+/// # Errors
+///
+/// Returns [`SummaryError::InvalidOutput`] for malformed bounds and
+/// [`SummaryError::Ungrounded`] when an entity is absent from allowed evidence.
 pub fn validate_output(
     request: &SummaryRequest,
     output: SummaryOutput,

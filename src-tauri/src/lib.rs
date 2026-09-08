@@ -7,6 +7,10 @@ use tauri::WindowEvent;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Starts the `OpenHistory` desktop shell and registers its tray and IPC handlers.
+///
+/// # Panics
+///
+/// Panics when the native application runtime cannot start.
 pub fn run() {
     let builder = tauri::Builder::default()
         .manage(dashboard::DashboardState::default())

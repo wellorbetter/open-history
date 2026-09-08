@@ -38,9 +38,18 @@ pub trait ActivityAdapter: Send {
     fn id(&self) -> &'static str;
 
     /// Starts collection into the bounded channel.
+    ///
+    /// # Errors
+    ///
+    /// Returns an adapter error when permission is absent, the source is unavailable, or the
+    /// bounded channel has closed.
     async fn start(&mut self, sender: EventSender) -> Result<(), AdapterError>;
 
     /// Stops collection promptly and releases observers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an adapter error when the native observer cannot be stopped cleanly.
     async fn stop(&mut self) -> Result<(), AdapterError>;
 }
 

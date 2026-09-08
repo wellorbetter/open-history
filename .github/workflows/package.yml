@@ -39,8 +39,27 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
       - run: npm run tauri build -- --no-bundle
+      - name: Generate checksum and provenance
+        shell: pwsh
+        run: |
+          $binary = Get-ChildItem target/release -File |
+            Where-Object { $_.Name -match '^openhistory(-desktop)?(\.exe)?$' } |
+            Select-Object -First 1
+          if (-not $binary) { throw 'OpenHistory release binary was not produced' }
+          $digest = (Get-FileHash $binary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$digest  $($binary.Name)" | Set-Content target/release/SHA256SUMS.txt
+          @{
+            commit = '${{ github.sha }}'
+            runner = '${{ matrix.os }}'
+            rust = '1.89.0'
+            node = '24'
+            signed = $false
+          } | ConvertTo-Json | Set-Content target/release/BUILD-PROVENANCE.json
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: target/release/openhistory*
+          path: |
+            target/release/openhistory*
+            target/release/SHA256SUMS.txt
+            target/release/BUILD-PROVENANCE.json
           if-no-files-found: error

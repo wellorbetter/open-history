@@ -3,6 +3,11 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 
+/// Creates the native notification-area icon.
+///
+/// # Errors
+///
+/// Returns a Tauri error when the tray icon cannot be constructed.
 pub fn setup(app: &mut App) -> tauri::Result<()> {
     let mut tray = TrayIconBuilder::with_id("openhistory")
         .tooltip("OpenHistory · Recording")
@@ -17,6 +22,7 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
     tray.build(app)?;
     Ok(())
 }
+/// Handles primary tray clicks and toggles the compact surface.
 pub fn handle_event(app: &AppHandle, event: TrayIconEvent) {
     if let TrayIconEvent::Click {
         position,

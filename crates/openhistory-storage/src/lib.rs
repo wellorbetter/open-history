@@ -18,7 +18,7 @@ use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 const DATABASE_KEY_BYTES: usize = 32;
-const DATABASE_MIGRATIONS: &str = r#"
+const DATABASE_MIGRATIONS: &str = r"
 BEGIN IMMEDIATE;
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS task_segments (
 INSERT OR IGNORE INTO schema_migrations(version, applied_at)
 VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 COMMIT;
-"#;
+";
 
 /// Storage operation failure without key or content disclosure.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -56,7 +56,7 @@ pub enum StorageError {
     /// The existing database could not be decrypted using the supplied key.
     #[error("database key was rejected")]
     DatabaseKeyRejected,
-    /// SQLCipher support is unavailable in the linked SQLite library.
+    /// `SQLCipher` support is unavailable in the linked `SQLite` library.
     #[error("SQLCipher is unavailable")]
     SqlCipherUnavailable,
     /// A database operation failed without exposing statement or secret details.
@@ -67,7 +67,7 @@ pub enum StorageError {
     CredentialStore,
 }
 
-/// A validated 256-bit SQLCipher key that erases its allocation on drop.
+/// A validated 256-bit `SQLCipher` key that erases its allocation on drop.
 pub struct DatabaseKey(Zeroizing<String>);
 
 impl DatabaseKey {
@@ -84,7 +84,7 @@ impl DatabaseKey {
     ///
     /// Returns [`StorageError::InvalidKey`] unless `value` contains exactly 32 bytes encoded as
     /// hexadecimal.
-    pub fn parse(value: String) -> Result<Self, StorageError> {
+    pub fn parse(value: &str) -> Result<Self, StorageError> {
         if value.len() != DATABASE_KEY_BYTES * 2
             || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
         {
@@ -151,7 +151,7 @@ impl OsDatabaseKeyProvider {
 impl DatabaseKeyProvider for OsDatabaseKeyProvider {
     fn load(&self) -> Result<Option<DatabaseKey>, StorageError> {
         match self.entry()?.get_password() {
-            Ok(value) => DatabaseKey::parse(value).map(Some),
+            Ok(value) => DatabaseKey::parse(&value).map(Some),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(_) => Err(StorageError::CredentialStore),
         }
@@ -164,14 +164,14 @@ impl DatabaseKeyProvider for OsDatabaseKeyProvider {
     }
 }
 
-/// An initialized SQLCipher connection. There is deliberately no plaintext fallback.
+/// An initialized `SQLCipher` connection. There is deliberately no plaintext fallback.
 pub struct EncryptedDatabase {
     connection: Connection,
     path: PathBuf,
 }
 
 impl EncryptedDatabase {
-    /// Loads or creates a key, opens SQLCipher, enables WAL, and applies migrations.
+    /// Loads or creates a key, opens `SQLCipher`, enables WAL, and applies migrations.
     ///
     /// # Errors
     ///
@@ -180,23 +180,22 @@ impl EncryptedDatabase {
         path: impl AsRef<Path>,
         provider: &impl DatabaseKeyProvider,
     ) -> Result<Self, StorageError> {
-        let key = match provider.load()? {
-            Some(existing) => existing,
-            None => {
-                let generated = DatabaseKey::generate();
-                provider.save(&generated)?;
-                generated
-            }
+        let key = if let Some(existing) = provider.load()? {
+            existing
+        } else {
+            let generated = DatabaseKey::generate();
+            provider.save(&generated)?;
+            generated
         };
         Self::open(path, &key)
     }
 
-    /// Opens a SQLCipher database using an explicit validated key.
+    /// Opens a `SQLCipher` database using an explicit validated key.
     ///
     /// # Errors
     ///
     /// Returns [`StorageError::DatabaseKeyRejected`] for an existing database encrypted with a
-    /// different key, and never retries with plaintext SQLite.
+    /// different key, and never retries with plaintext `SQLite`.
     pub fn open(path: impl AsRef<Path>, key: &DatabaseKey) -> Result<Self, StorageError> {
         let path = path.as_ref();
         let existing = path.metadata().is_ok_and(|metadata| metadata.len() > 0);
@@ -385,7 +384,7 @@ mod tests {
         fn load(&self) -> Result<Option<DatabaseKey>, StorageError> {
             self.value
                 .borrow()
-                .clone()
+                .as_deref()
                 .map(DatabaseKey::parse)
                 .transpose()
         }
@@ -474,9 +473,9 @@ mod tests {
     #[test]
     fn database_key_validation_fails_closed() {
         assert!(matches!(
-            DatabaseKey::parse("not-a-key".to_owned()),
+            DatabaseKey::parse("not-a-key"),
             Err(StorageError::InvalidKey)
         ));
-        assert!(DatabaseKey::parse("ab".repeat(DATABASE_KEY_BYTES)).is_ok());
+        assert!(DatabaseKey::parse(&"ab".repeat(DATABASE_KEY_BYTES)).is_ok());
     }
 }

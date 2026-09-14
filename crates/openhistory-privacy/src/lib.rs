@@ -230,7 +230,7 @@ mod tests {
         assert!(!built);
         assert!(stored.is_empty());
         let diagnostic = format!("{decision:?}");
-        assert_eq!(diagnostic, "Exclude(Window)");
+        assert_eq!(diagnostic, "Exclude(Website)");
         assert!(!diagnostic.contains(sensitive));
     }
 

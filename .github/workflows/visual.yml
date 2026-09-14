@@ -29,9 +29,11 @@ jobs:
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true
         with:
           name: openhistory-visual-evidence
           path: |
             artifacts/playwright
             playwright-report
           if-no-files-found: warn
+          retention-days: 1

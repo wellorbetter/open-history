@@ -1,9 +1,10 @@
 //! Native `OpenHistory` application shell.
 
 mod dashboard;
+mod runtime;
 mod tray;
 
-use tauri::WindowEvent;
+use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Starts the `OpenHistory` desktop shell and registers its tray and IPC handlers.
@@ -12,17 +13,26 @@ use tauri::WindowEvent;
 ///
 /// Panics when the native application runtime cannot start.
 pub fn run() {
+    let dashboard = dashboard::DashboardState::default();
     let builder = tauri::Builder::default()
-        .manage(dashboard::DashboardState::default())
+        .manage(dashboard.clone())
         .invoke_handler(tauri::generate_handler![
             dashboard::get_dashboard,
             dashboard::set_collection_status,
             dashboard::open_history_window,
             dashboard::delete_history
         ])
-        .setup(|app| {
+        .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            let data_directory = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&data_directory)?;
+            let runtime = runtime::CollectorRuntime::initialize(
+                &data_directory.join("history.sqlite3"),
+                dashboard.clone(),
+            )
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+            app.manage(runtime);
             tray::setup(app)?;
             Ok(())
         })

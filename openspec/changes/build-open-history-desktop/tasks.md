@@ -48,6 +48,13 @@
 
 ## 7. macOS Collection and Menu-Bar Integration
 
+Implementation note (2026-09-14): an initial consent-gated `AXUIElement` snapshot collector and
+`AXObserver` notification stream now emit minimized canonical application, window, and semantic
+events into a bounded encrypted writer. Secure text-field context is suppressed, document paths are
+one-way hashed, exclusions run before event construction, and permission revocation stops the
+collector. The acceptance items remain open until the signed application harness and representative
+app matrix pass.
+
 - [ ] 7.1 Implement macOS application activation, window, idle, lock, sleep, and wake observation; verify a signed integration harness emits canonical fixtures for Finder, Terminal, a browser, and an editor.
 - [ ] 7.2 Implement AXObserver/AXUIElement semantic control observation and explicit quality fallbacks; verify no raw-key or screenshot API is linked and unsupported applications degrade to app/window metadata.
 - [ ] 7.3 Implement Accessibility permission status, progressive setup, revocation detection, and recovery diagnostics; verify no events persist before consent and collection stops immediately after simulated revocation.

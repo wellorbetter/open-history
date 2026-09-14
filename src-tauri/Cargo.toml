@@ -17,12 +17,14 @@ openhistory-adapters = { path = "../crates/openhistory-adapters" }
 openhistory-api = { path = "../crates/openhistory-api" }
 openhistory-domain = { path = "../crates/openhistory-domain" }
 openhistory-privacy = { path = "../crates/openhistory-privacy" }
+openhistory-platform = { path = "../crates/openhistory-platform" }
 openhistory-segmentation = { path = "../crates/openhistory-segmentation" }
 openhistory-storage = { path = "../crates/openhistory-storage" }
 openhistory-summaries = { path = "../crates/openhistory-summaries" }
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2.11.5", features = ["tray-icon", "macos-private-api"] }
+tokio.workspace = true
 
 [lints]
 workspace = true

@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::{DateTime, Duration, FixedOffset};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use openhistory_domain::{EventEnvelope, normalize_event_order};
 use openhistory_segmentation::TaskSegment;
 use rusqlite::{Connection, OpenFlags};
@@ -271,6 +271,83 @@ impl EncryptedDatabase {
             .map_err(|_| StorageError::Database)
     }
 }
+
+impl HistoryRepository for EncryptedDatabase {
+    fn insert_event(&mut self, event: EventEnvelope) -> Result<(), StorageError> {
+        let event_json = serde_json::to_string(&event).map_err(|_| StorageError::Database)?;
+        self.connection
+            .execute(
+                "INSERT OR IGNORE INTO raw_events(event_id, occurred_at, monotonic_ticks, event_json) VALUES (?1, ?2, ?3, ?4)",
+                (
+                    event.event_id.to_string(),
+                    event.occurred_at.with_timezone(&Utc).to_rfc3339(),
+                    i64::try_from(event.monotonic_ticks).unwrap_or(i64::MAX),
+                    event_json,
+                ),
+            )
+            .map_err(|_| StorageError::Database)?;
+        Ok(())
+    }
+
+    fn upsert_segment(&mut self, segment: TaskSegment) -> Result<(), StorageError> {
+        let segment_json = serde_json::to_string(&segment).map_err(|_| StorageError::Database)?;
+        self.connection
+            .execute(
+                "INSERT INTO task_segments(segment_id, started_at, ended_at, segment_json) VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT(segment_id) DO UPDATE SET started_at=excluded.started_at, ended_at=excluded.ended_at, segment_json=excluded.segment_json",
+                (
+                    segment.segment_id,
+                    segment.started_at.to_rfc3339(),
+                    segment.ended_at.to_rfc3339(),
+                    segment_json,
+                ),
+            )
+            .map_err(|_| StorageError::Database)?;
+        Ok(())
+    }
+
+    fn events(&self) -> Vec<EventEnvelope> {
+        let Ok(mut statement) = self.connection.prepare(
+            "SELECT event_json FROM raw_events ORDER BY occurred_at, monotonic_ticks, event_id",
+        ) else {
+            return Vec::new();
+        };
+        let Ok(rows) = statement.query_map([], |row| row.get::<_, String>(0)) else {
+            return Vec::new();
+        };
+        let events = rows
+            .filter_map(Result::ok)
+            .filter_map(|value| serde_json::from_str(&value).ok())
+            .collect::<Vec<_>>();
+        normalize_event_order(&events)
+    }
+
+    fn sweep_retention(
+        &mut self,
+        now: DateTime<FixedOffset>,
+        policy: RetentionPolicy,
+    ) -> Result<DeletionReport, StorageError> {
+        let cutoff = match policy {
+            RetentionPolicy::NoRawHistory => now,
+            RetentionPolicy::Hours(hours) => now - Duration::hours(i64::from(hours)),
+        };
+        let transaction = self
+            .connection
+            .transaction()
+            .map_err(|_| StorageError::Database)?;
+        let raw_events = transaction
+            .execute(
+                "DELETE FROM raw_events WHERE occurred_at < ?1",
+                [cutoff.with_timezone(&Utc).to_rfc3339()],
+            )
+            .map_err(|_| StorageError::RolledBack)?;
+        transaction.commit().map_err(|_| StorageError::RolledBack)?;
+        Ok(DeletionReport {
+            raw_events,
+            segments: 0,
+        })
+    }
+}
 /// Supported raw-event retention settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RetentionPolicy {
@@ -468,6 +545,30 @@ mod tests {
             EncryptedDatabase::open(&path, &wrong_key),
             Err(StorageError::DatabaseKeyRejected)
         ));
+    }
+
+    #[test]
+    fn encrypted_repository_persists_events_and_sweeps_in_utc_order() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("history.sqlite3");
+        let key = DatabaseKey::generate();
+        let mut database = EncryptedDatabase::open(&path, &key).unwrap();
+        database
+            .insert_event(event("2026-09-06T15:59:59+08:00", 1))
+            .unwrap();
+        database
+            .insert_event(event("2026-09-06T08:00:00+00:00", 2))
+            .unwrap();
+        assert_eq!(database.events().len(), 2);
+
+        let report = database
+            .sweep_retention(
+                DateTime::parse_from_rfc3339("2026-09-08T08:00:00+00:00").unwrap(),
+                RetentionPolicy::default(),
+            )
+            .unwrap();
+        assert_eq!(report.raw_events, 1);
+        assert_eq!(database.events().len(), 1);
     }
 
     #[test]

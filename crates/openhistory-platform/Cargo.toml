@@ -6,8 +6,15 @@ rust-version.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+blake3.workspace = true
+chrono.workspace = true
 openhistory-adapters = { path = "../openhistory-adapters" }
+openhistory-domain = { path = "../openhistory-domain" }
+openhistory-privacy = { path = "../openhistory-privacy" }
 tokio.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+axuielement = { version = "0.9.1", default-features = false, features = ["async"] }
 
 [lints]
 workspace = true

@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -9,9 +9,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 #[serde(rename_all = "snake_case")]
 pub enum CollectionStatus {
     /// Semantic collection is active.
-    #[default]
     Recording,
     /// Collection was paused by the user.
+    #[default]
     Paused,
     /// Operating-system permission must be restored.
     PermissionNeeded,
@@ -20,9 +20,18 @@ pub enum CollectionStatus {
 }
 
 /// Shared state exposed through the narrow dashboard command surface.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct DashboardState {
-    status: Mutex<CollectionStatus>,
+    status: Arc<Mutex<CollectionStatus>>,
+}
+
+impl DashboardState {
+    /// Replaces the non-sensitive collection status shared by native tasks and commands.
+    pub(crate) fn set_status(&self, status: CollectionStatus) {
+        if let Ok(mut current) = self.status.lock() {
+            *current = status;
+        }
+    }
 }
 
 #[tauri::command]
@@ -32,12 +41,17 @@ pub struct DashboardState {
 /// # Errors
 ///
 /// Returns an error when the collection state lock is unavailable.
-pub fn get_dashboard(state: State<'_, DashboardState>) -> Result<Value, String> {
+pub fn get_dashboard(
+    state: State<'_, DashboardState>,
+    runtime: State<'_, crate::runtime::CollectorRuntime>,
+) -> Result<Value, String> {
     let status = *state
         .status
         .lock()
         .map_err(|_| "collection state is unavailable".to_owned())?;
-    Ok(fixture_snapshot(status))
+    let mut snapshot = fixture_snapshot(status);
+    snapshot["recordedEventCount"] = json!(runtime.event_count());
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -47,9 +61,10 @@ pub fn get_dashboard(state: State<'_, DashboardState>) -> Result<Value, String> 
 /// # Errors
 ///
 /// Returns an error when permission is missing, the adapter is unhealthy, or the state lock fails.
-pub fn set_collection_status(
+pub async fn set_collection_status(
     status: CollectionStatus,
     state: State<'_, DashboardState>,
+    runtime: State<'_, crate::runtime::CollectorRuntime>,
     app: AppHandle,
 ) -> Result<CollectionStatus, String> {
     if matches!(
@@ -58,12 +73,23 @@ pub fn set_collection_status(
     ) {
         return Err("collection cannot be started until permission is restored".to_owned());
     }
-    *state
-        .status
-        .lock()
-        .map_err(|_| "collection state is unavailable".to_owned())? = status;
-    let _ = app.emit("collection-status-changed", status);
-    Ok(status)
+    let resolved = match status {
+        CollectionStatus::Recording => match runtime.start(app.clone()).await {
+            Ok(()) => CollectionStatus::Recording,
+            Err(openhistory_adapters::AdapterError::PermissionRequired) => {
+                CollectionStatus::PermissionNeeded
+            }
+            Err(_) => CollectionStatus::Error,
+        },
+        CollectionStatus::Paused => {
+            runtime.stop().await.map_err(|error| error.to_string())?;
+            CollectionStatus::Paused
+        }
+        CollectionStatus::PermissionNeeded | CollectionStatus::Error => unreachable!(),
+    };
+    state.set_status(resolved);
+    let _ = app.emit("collection-status-changed", resolved);
+    Ok(resolved)
 }
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]

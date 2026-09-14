@@ -26,9 +26,9 @@ OpenHistory is an open, local-only activity timeline for macOS and Windows. It t
 semantic accessibility events into deterministic, resumable work context—without screenshots,
 audio recording, raw-key logging, accounts, telemetry, or cloud processing.
 
-> **Private alpha:** the fixture UI, domain core, privacy boundary, and unsigned cross-platform
-> builds are available. Native collection and production storage are still being completed; do not
-> use this build as a daily activity recorder yet.
+> **Public alpha:** the initial macOS Accessibility collector, encrypted event writer, fixture UI,
+> domain core, and privacy boundary are available. The timeline is not connected to captured events
+> yet, and Windows collection is still a contract-only stub; do not use this as a daily recorder.
 
 ## About
 

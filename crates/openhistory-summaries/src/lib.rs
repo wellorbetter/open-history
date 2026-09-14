@@ -1,4 +1,4 @@
-//! Offline deterministic summaries and the safe optional enrichment boundary.
+//! Offline deterministic summaries and the safe optional on-device enrichment boundary.
 
 use std::collections::BTreeSet;
 
@@ -43,7 +43,7 @@ pub fn deterministic_summary(segment: &TaskSegment) -> DeterministicSummary {
     }
 }
 
-/// Minimized request presented to an optional compatible provider.
+/// Minimized request presented to an optional compatible on-device engine.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SummaryRequest {
     /// Immutable segment revision identity.
@@ -56,32 +56,32 @@ pub struct SummaryRequest {
     pub evidence: Vec<String>,
 }
 
-/// Validated structured provider output.
+/// Validated structured local-engine output.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SummaryOutput {
     /// Grounded task title.
     pub title: String,
     /// Grounded concise summary.
     pub summary: String,
-    /// Entity labels claimed by the provider.
+    /// Entity labels claimed by the local engine.
     pub entities: Vec<String>,
 }
 
-/// Provider-neutral enrichment error.
+/// On-device enrichment error.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum SummaryError {
-    /// Provider did not respond before the local deadline.
-    #[error("provider timed out")]
+    /// Local engine did not respond before the deadline.
+    #[error("local engine timed out")]
     Timeout,
     /// Output could not be parsed or violated the schema.
-    #[error("provider returned invalid structured output")]
+    #[error("local engine returned invalid structured output")]
     InvalidOutput,
     /// Output introduced an entity absent from allowed evidence.
-    #[error("provider output was not grounded")]
+    #[error("local engine output was not grounded")]
     Ungrounded,
 }
 
-/// Optional enrichment provider. Timeline rendering must never wait for it.
+/// Optional on-device enrichment engine. Timeline rendering must never wait for it.
 #[async_trait]
 pub trait Summarizer: Send + Sync {
     /// Returns structured enrichment without mutating source segments.
@@ -92,7 +92,7 @@ pub trait Summarizer: Send + Sync {
     async fn summarize(&self, request: &SummaryRequest) -> Result<SummaryOutput, SummaryError>;
 }
 
-/// Builds a provider prompt that structurally treats captured text as untrusted evidence.
+/// Builds a local-model prompt that structurally treats captured text as untrusted evidence.
 #[must_use]
 pub fn build_minimized_prompt(request: &SummaryRequest) -> String {
     let mut result = String::from(

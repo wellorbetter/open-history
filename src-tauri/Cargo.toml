@@ -3,7 +3,7 @@ name = "openhistory-desktop"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Local-first semantic desktop activity history"
+description = "Local-only semantic desktop activity history"
 
 [lib]
 name = "openhistory_desktop_lib"

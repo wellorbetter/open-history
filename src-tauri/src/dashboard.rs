@@ -125,7 +125,7 @@ fn fixture_snapshot(status: CollectionStatus) -> Value {
         "privacy": {
             "rawRetentionHours": 48,
             "excludedApplications": ["1Password", "Keychain Access"],
-            "externalAiEnabled": false,
+            "localAiEnabled": false,
             "localApiEnabled": false,
             "mcpEnabled": false
         }
@@ -140,7 +140,7 @@ mod tests {
     fn fixture_state_is_typed_and_local_first() {
         let snapshot = fixture_snapshot(CollectionStatus::Paused);
         assert_eq!(snapshot["status"], "paused");
-        assert_eq!(snapshot["privacy"]["externalAiEnabled"], false);
+        assert_eq!(snapshot["privacy"]["localAiEnabled"], false);
         assert_eq!(snapshot["privacy"]["rawRetentionHours"], 48);
     }
 }

@@ -19,7 +19,7 @@
 - [ ] 3.3 Implement repositories for sources, raw events, sessions, segments, links, summary revisions, policies, clients, and imports; verify transactional CRUD and rollback tests for every repository.
 - [ ] 3.4 Implement the retention worker with a 48-hour default and shorter/no-raw-history options; verify boundary timestamps and linked search indexes are deleted transactionally.
 - [ ] 3.5 Implement single-segment, recent-period, current-day, date-range, and all-history deletion; verify each integration test removes raw, derived, indexed, and managed temporary-export data in scope only.
-- [ ] 3.6 Implement redacted diagnostics output; verify automated secret scanning finds no database key, provider key, bearer token, authorization header, or excluded content.
+- [ ] 3.6 Implement redacted diagnostics output; verify automated secret scanning finds no database key, bearer token, authorization header, or excluded content.
 
 ## 4. Deterministic Session and Task Segmentation
 
@@ -32,9 +32,9 @@
 ## 5. Summary Pipeline
 
 - [ ] 5.1 Implement the deterministic title, outline, duration, and source formatter; verify useful summaries are produced offline for single-source, multi-source, sparse, and long-running task fixtures.
-- [ ] 5.2 Define the provider-neutral structured summarizer interface and output validator; verify malformed, timed-out, hallucinated-entity, and oversized responses fall back without blocking the timeline.
+- [ ] 5.2 Define the on-device structured summarizer interface and output validator; verify malformed, timed-out, hallucinated-entity, and oversized responses fall back without blocking the timeline.
 - [ ] 5.3 Implement minimized prompt assembly that treats captured text as delimited untrusted evidence; verify prompt-injection fixtures cannot alter system instructions or request tool execution.
-- [ ] 5.4 Implement on-device/OpenAI-compatible and user-configured HTTPS-compatible provider adapters with credentials in the OS store; verify provider contract tests use mock servers and no key enters persisted config or logs.
+- [ ] 5.4 Implement an on-device model adapter with a local-only transport; verify no remote endpoint or model credential can be configured and network-deny tests observe no outbound activity-data request.
 - [ ] 5.5 Implement manual, scheduled, retry, edit, regenerate, and revert summary revisions; verify attribution and source-segment revision remain visible through every transition.
 
 ## 6. Desktop Design System and Fixture UI

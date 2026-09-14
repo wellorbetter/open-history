@@ -22,10 +22,10 @@ describe('FullHistoryView', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
-  it('keeps external processing and agent access disabled by default', () => {
+  it('keeps optional local processing and agent access disabled by default', () => {
     render(<FullHistoryView initial={structuredClone(dashboardFixture)} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(screen.getByLabelText('Use an external compatible endpoint')).not.toBeChecked();
+    expect(screen.getByLabelText('Use an on-device model')).not.toBeChecked();
     expect(screen.getByLabelText('Loopback API')).not.toBeChecked();
     expect(screen.getByLabelText('MCP companion')).not.toBeChecked();
   });

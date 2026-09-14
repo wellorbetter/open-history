@@ -97,7 +97,7 @@ export const timelineFixture: ActivitySegment[] = [
   {
     id: 'architecture-review',
     title: 'Active intelligence architecture review',
-    summary: 'Refined the local-first data flow and read-only agent boundary.',
+    summary: 'Refined the local-only data flow and read-only agent boundary.',
     start: '16:10',
     end: '16:20',
     durationMinutes: 10,
@@ -147,7 +147,7 @@ export const dashboardFixture: DashboardSnapshot = {
   privacy: {
     rawRetentionHours: 48,
     excludedApplications: ['1Password', 'Keychain Access'],
-    externalAiEnabled: false,
+    localAiEnabled: false,
     localApiEnabled: false,
     mcpEnabled: false,
   },

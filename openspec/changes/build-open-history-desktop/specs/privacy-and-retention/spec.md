@@ -1,6 +1,6 @@
 ## Purpose
 
-Give users understandable control over sensitive activity data throughout collection, local processing, optional AI processing, retention, export, and deletion.
+Give users understandable control over sensitive activity data throughout collection, fully local processing, optional on-device AI processing, retention, export, and deletion.
 
 ## ADDED Requirements
 
@@ -36,15 +36,15 @@ The system SHALL let the user delete a single task segment, the last 10 minutes,
 - **WHEN** the user confirms deletion of the last hour
 - **THEN** matching raw events, derived segments, summaries, search entries, and exported temporary files managed by the application are removed
 
-### Requirement: External processing is opt-in
-The system SHALL keep summarization on device unless the user explicitly configures an external provider, and SHALL disclose what fields will leave the device before the first external request.
+### Requirement: Activity data remains on device
+The system SHALL perform capture, persistence, indexing, search, deterministic summarization, and optional model enrichment on the user's device. It MUST NOT provide cloud processing, cloud synchronization, telemetry, remote history binding, or configuration for an external model endpoint.
 
-#### Scenario: External AI is enabled
-- **WHEN** the user approves the first external summarization request
-- **THEN** only the previewed, minimized payload is sent and the selected provider is visibly associated with the generated result
+#### Scenario: On-device model enrichment is enabled
+- **WHEN** the user enables a compatible local model engine
+- **THEN** only a minimized payload is delivered through a local transport and no activity data leaves the device
 
 ### Requirement: Secrets are protected
-Provider credentials and local API credentials MUST be stored using the operating system's secure credential facility and MUST NOT appear in logs, exports, or plaintext configuration files.
+Database keys and local API credentials MUST be stored using the operating system's secure credential facility and MUST NOT appear in logs, exports, or plaintext configuration files.
 
 #### Scenario: Diagnostics are exported
 - **WHEN** the user creates a diagnostics bundle

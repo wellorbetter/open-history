@@ -19,12 +19,12 @@
 </div>
 
 <p align="center">
-  <img src="docs/openhistory-hero.svg" width="960" alt="OpenHistory product preview showing a local-first desktop activity timeline">
+  <img src="docs/openhistory-hero.svg" width="960" alt="OpenHistory product preview showing a local-only desktop activity timeline">
 </p>
 
-OpenHistory is an open, local-first activity timeline for macOS and Windows. It turns consented
+OpenHistory is an open, local-only activity timeline for macOS and Windows. It turns consented
 semantic accessibility events into deterministic, resumable work context—without screenshots,
-audio recording, or raw-key logging.
+audio recording, raw-key logging, accounts, telemetry, or cloud processing.
 
 > **Private alpha:** the fixture UI, domain core, privacy boundary, and unsigned cross-platform
 > builds are available. Native collection and production storage are still being completed; do not
@@ -34,8 +34,9 @@ audio recording, or raw-key logging.
 
 Computer History can make work resumable, but today that context may be unavailable in your region,
 locked inside one product, or exposed without the controls needed for sensitive desktop activity.
-OpenHistory is the local-first alternative: your primary record stays on your device, works without
-a cloud account, and becomes available to tools only through separately approved read-only access.
+OpenHistory is the local-only alternative: capture, storage, search, and summarization stay on your
+device, and history becomes available to tools only through separately approved local read-only
+access.
 
 | Computer History pain point   | OpenHistory direction                                            |
 | :---------------------------- | :--------------------------------------------------------------- |
@@ -50,7 +51,7 @@ a cloud account, and becomes available to tools only through separately approved
 | :-------------- | :------------------------------------------------------------------------ |
 | **Compact**     | A menu-bar popover on macOS and notification-area flyout on Windows.      |
 | **Useful**      | Current work, daily timeline, search, corrections, summaries, and export. |
-| **Local-first** | Deterministic processing works offline; model enrichment is optional.     |
+| **Local-only**  | Processing stays offline; optional model enrichment runs on device.       |
 | **Agent-ready** | Versioned local API and read-only MCP access are explicit opt-ins.        |
 
 ## Privacy by design
@@ -59,6 +60,7 @@ a cloud account, and becomes available to tools only through separately approved
 - Application, window, website, and private-browser exclusions run before persistence.
 - Raw events expire after 48 hours by default; shorter retention and no-raw-history are supported.
 - The database uses SQLCipher; its random key belongs in Keychain or Windows Credential Manager.
+- Activity data has no cloud processing, synchronization, telemetry, or remote API path.
 - Captured text is untrusted data. It never becomes an instruction or executable action.
 
 See the complete [privacy model](docs/privacy.md) and [architecture](docs/architecture.md).

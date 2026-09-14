@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title description">
   <title id="title">OpenHistory desktop activity timeline</title>
-  <desc id="description">A polished product preview showing OpenHistory as a local-first macOS menu-bar and Windows tray timeline.</desc>
+  <desc id="description">A polished product preview showing OpenHistory as a local-only macOS menu-bar and Windows tray timeline.</desc>
   <defs>
     <linearGradient id="background" x1="120" y1="40" x2="1490" y2="860" gradientUnits="userSpaceOnUse">
       <stop stop-color="#F7FAF4"/>
@@ -70,7 +70,7 @@
 
     <g transform="translate(0 498)">
       <line x1="0" y1="0" x2="510" y2="0" stroke="#C8DACD"/>
-      <text x="0" y="48" fill="#6A7D71" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" letter-spacing="1.8">LOCAL-FIRST · PRIVATE BY DEFAULT</text>
+      <text x="0" y="48" fill="#6A7D71" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" letter-spacing="1.8">LOCAL-ONLY · USER CONTROLLED</text>
       <g transform="translate(0 86)">
         <circle cx="12" cy="12" r="12" fill="#3C8B66"/>
         <path d="m7 12 3.2 3.3L17 8.7" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>

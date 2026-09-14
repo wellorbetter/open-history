@@ -13,7 +13,11 @@ export function SetupView() {
           this device.
         </p>
         <div className="privacy-promise">
-          <Promise icon={<HardDrive />} title="Local by default" text="No account or cloud sync." />
+          <Promise
+            icon={<HardDrive />}
+            title="Local only"
+            text="No account, cloud processing, or telemetry."
+          />
           <Promise icon={<MonitorOff />} title="No screenshots" text="Pixels are never captured." />
           <Promise icon={<MicOff />} title="No audio" text="Microphones are never accessed." />
           <Promise

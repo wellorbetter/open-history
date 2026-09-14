@@ -269,7 +269,7 @@ function SettingsPanel({
       <header>
         <p className="eyebrow">Device preferences</p>
         <h1>Settings</h1>
-        <p>Collection and external access stay separate, visible, and reversible.</p>
+        <p>Collection and local access stay separate, visible, and reversible.</p>
       </header>
 
       <div className="settings-grid">
@@ -294,10 +294,10 @@ function SettingsPanel({
 
         <SettingsCard
           icon={<Sparkles size={19} />}
-          title="AI summaries"
-          description="Deterministic summaries always work offline. External AI is opt-in."
+          title="On-device summaries"
+          description="Deterministic summaries always work offline. Local model enrichment is optional."
         >
-          <ToggleRow label="Use an external compatible endpoint" checked={false} />
+          <ToggleRow label="Use an on-device model" checked={snapshot.privacy.localAiEnabled} />
         </SettingsCard>
 
         <SettingsCard

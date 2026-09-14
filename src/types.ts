@@ -12,7 +12,7 @@ export interface ActivitySource {
 export interface SummaryRevision {
   id: string;
   author: 'deterministic' | 'ai' | 'user';
-  provider?: string;
+  engine?: string;
   createdAt: string;
   title: string;
   summary: string;
@@ -37,7 +37,7 @@ export interface ActivitySegment {
 export interface PrivacySettings {
   rawRetentionHours: 0 | 12 | 24 | 48;
   excludedApplications: string[];
-  externalAiEnabled: boolean;
+  localAiEnabled: boolean;
   localApiEnabled: boolean;
   mcpEnabled: boolean;
 }

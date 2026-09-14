@@ -4,7 +4,7 @@ This is a greenfield project; no source implementation is available. The supplie
 
 The design must bridge two different accessibility stacks. macOS exposes application accessibility objects and notifications through AXUIElement/AXObserver after explicit Accessibility permission. Windows exposes foreground/window events and semantic control data through WinEvent hooks and UI Automation. Both platforms contain applications that expose incomplete or inconsistent accessibility trees, so the system must represent confidence and missing data rather than assume parity.
 
-The desktop process is long-lived but visually quiet. Collection continues while its main window is closed, the compact surface must open quickly from the menu bar or tray, and all core behavior must remain useful without an AI provider or network connection. Activity content is sensitive and potentially adversarial.
+The desktop process is long-lived but visually quiet. Collection continues while its main window is closed, the compact surface must open quickly from the menu bar or tray, and all core behavior must remain useful without a model. Activity processing never requires outbound network access, and captured content is sensitive and potentially adversarial.
 
 ## Goals / Non-Goals
 
@@ -12,8 +12,8 @@ The desktop process is long-lived but visually quiet. Collection continues while
 
 - Keep platform-specific collection behind one canonical Rust domain model.
 - Make the compact surface feel native on macOS and familiar on Windows without maintaining two complete UI codebases.
-- Keep task boundaries deterministic and inspectable; reserve AI for optional wording enrichment.
-- Minimize persistent sensitive data and make every collection and external-processing state visible and reversible.
+- Keep task boundaries deterministic and inspectable; reserve on-device AI for optional wording enrichment.
+- Minimize persistent sensitive data and make every collection and local-processing state visible and reversible.
 - Provide a stable local integration boundary for the first-party UI, browser adapters, exports, and AI agents.
 - Keep an idle background build within a target of 2% average CPU and 150 MB working memory on representative supported hardware, subject to platform integration measurement.
 
@@ -24,6 +24,7 @@ The desktop process is long-lived but visually quiet. Collection continues while
 - Use global keyboard hooks to reconstruct typed text.
 - Let an agent execute desktop actions through the history service.
 - Support remote network clients, account-based cloud sync, team administration, or mobile clients in V1.
+- Transmit activity data, summaries, diagnostics, or telemetry to a remote service.
 
 ## Decisions
 
@@ -65,7 +66,7 @@ The canonical envelope contains:
 
 Payloads are minimized before entering persistence. An exclusion policy engine runs between adapter normalization and the durable event writer. Policy outcomes are auditable without preserving the discarded content or excluded source identity.
 
-### 5. Separate deterministic segmentation from optional AI summarization
+### 5. Separate deterministic segmentation from optional on-device AI summarization
 
 An online sessionizer maintains the current projection used by the compact card. A reconciliation job reruns the same deterministic algorithm when late events arrive or settings change.
 
@@ -77,21 +78,21 @@ The initial algorithm uses:
 - lower confidence across private gaps or low-quality sources;
 - stable segment IDs derived from ordered source-event IDs and segmentation-policy version.
 
-AI output can rename or summarize a segment but cannot silently alter its time boundaries. User split/merge operations create derived revisions linked to immutable source events.
+On-device AI output can rename or summarize a segment but cannot silently alter its time boundaries. User split/merge operations create derived revisions linked to immutable source events.
 
 ### 6. Store local history in an encrypted SQLite database
 
-The core uses SQLite in WAL mode with schema migrations and full-text indexing over permitted derived summaries. The database is encrypted using SQLCipher; its randomly generated key is stored in macOS Keychain or Windows Credential Manager. Provider and client credentials use the same OS credential facilities and never enter the database in plaintext.
+The core uses SQLite in WAL mode with schema migrations and full-text indexing over permitted derived summaries. The database is encrypted using SQLCipher; its randomly generated key is stored in macOS Keychain or Windows Credential Manager. Local-client credentials use the same OS credential facilities and never enter the database in plaintext.
 
 Principal records are `sources`, `raw_events`, `sessions`, `task_segments`, `segment_event_links`, `summary_revisions`, `privacy_policies`, `approved_clients`, `imports`, and `schema_migrations`. A retention worker deletes expired raw rows and related indexes transactionally. User-facing deletion traverses all derived links in one transaction and queues secure cleanup of managed temporary exports.
 
 Plain SQLite relying only on FileVault or BitLocker was rejected because the application must not assume full-disk encryption is enabled. Per-field encryption was rejected for V1 because it complicates migrations and search while leaving structural metadata exposed.
 
-### 7. Provide deterministic summaries first and provider-neutral AI enrichment second
+### 7. Provide deterministic summaries first and on-device AI enrichment second
 
 The deterministic formatter uses task boundaries, dominant project/document labels, action categories, and source transitions to create a title, outline, duration, and source list immediately.
 
-The summarizer interface accepts a minimized typed record and returns validated structured output. Initial adapters support an on-device/OpenAI-compatible endpoint and a generic user-configured OpenAI-compatible HTTPS endpoint; no provider is required or enabled by default. The UI previews externally shared fields before first use and identifies AI-generated revisions.
+The summarizer interface accepts a minimized typed record and returns validated structured output from an on-device engine. No model is required or enabled by default. The product does not accept remote endpoint configuration and does not include an outbound activity-data transport. The UI identifies model-generated revisions and reports which local engine created them.
 
 Captured text is delimited as untrusted evidence, stripped of control characters, size limited, and never concatenated into system or tool instructions. Output is checked for unsupported entities and preserved as a revision beside the deterministic fallback.
 
@@ -120,7 +121,7 @@ The accent color communicates active collection and selection only. Light, dark,
 
 ### 10. Make permission and privacy setup progressive
 
-First launch explains the local-first model and collection categories without imitating the operating-system alert. The user chooses Continue before the real platform permission request. Browser enrichment, external AI, autostart, and agent access are separate later choices and are not preselected.
+First launch explains the local-only model and collection categories without imitating the operating-system alert. The user chooses Continue before the real platform permission request. Capture detail, browser enrichment, on-device AI, autostart, and local agent access are separate later choices and are not preselected.
 
 The compact header always shows Recording, Paused, Permission needed, or Error in text as well as iconography. Exclusion and deletion controls live in the full settings/history window, with destructive actions showing the affected time range and data types.
 
@@ -151,7 +152,7 @@ Packaging workflows build unsigned development artifacts on macOS and Windows. R
 3. Add macOS collection and permission diagnostics behind an opt-in developer flag, then enable the menu-bar experience.
 4. Add the Windows adapter and tray experience against the same contract suite.
 5. Add browser enrichment, deterministic segmentation, retention/deletion, export, and the full history window.
-6. Add optional AI providers, the loopback API, and the read-only MCP companion after privacy and injection tests pass.
+6. Add optional on-device model engines, the loopback API, and the read-only MCP companion after privacy and injection tests pass.
 7. Produce unsigned private beta artifacts, collect coverage/performance data, then gate signed releases on platform credentials.
 
 Rollback is a normal application downgrade only while the database schema remains compatible. Every migration must retain a pre-migration encrypted backup until the new version opens and validates it; incompatible downgrade attempts stop with an export/recovery path rather than modifying data.

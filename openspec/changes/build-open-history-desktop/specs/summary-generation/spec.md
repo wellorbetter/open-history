@@ -1,6 +1,6 @@
 ## Purpose
 
-Create concise, grounded task summaries with a dependable non-AI baseline and optional provider-neutral AI enrichment that remains transparent and reversible.
+Create concise, grounded task summaries with a dependable non-AI baseline and optional on-device AI enrichment that remains transparent and reversible.
 
 ## ADDED Requirements
 
@@ -12,14 +12,14 @@ The system SHALL generate a deterministic title, time range, duration, contribut
 - **THEN** the timeline immediately presents a usable deterministic summary
 
 ### Requirement: AI enrichment is optional and attributable
-The system SHALL support manual and scheduled AI enrichment through interchangeable providers. Every enriched summary SHALL disclose that AI was used, the provider category, generation time, and the source segment revision.
+The system SHALL support manual and scheduled AI enrichment through interchangeable on-device engines. Every enriched summary SHALL disclose that AI was used, the local engine, generation time, and the source segment revision.
 
 #### Scenario: AI enrichment succeeds
-- **WHEN** the configured provider returns a valid grounded summary
+- **WHEN** the configured local engine returns a valid grounded summary
 - **THEN** the system stores it as a new derived revision without deleting the deterministic fallback
 
 #### Scenario: AI enrichment fails
-- **WHEN** the provider is unavailable, times out, or returns invalid output
+- **WHEN** the local engine is unavailable, times out, or returns invalid output
 - **THEN** the deterministic summary remains usable and the user receives a retryable, non-blocking error
 
 ### Requirement: Summaries remain grounded in recorded evidence

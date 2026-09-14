@@ -9,13 +9,13 @@
 
 - [x] 2.1 Implement the versioned canonical event envelope and typed semantic payloads; verify serialization round trips and compatibility fixtures for every V1 event kind.
 - [x] 2.2 Implement source identity, capture-quality, privacy-classification, redaction, and correlation metadata; verify missing and partial platform data is represented without fabricated values.
-- [ ] 2.3 Implement monotonic ordering and local timestamp/time-zone normalization; verify daylight-saving changes, clock rollback, late arrival, and equal timestamp fixtures.
+- [x] 2.3 Implement monotonic ordering and local timestamp/time-zone normalization; verify daylight-saving changes, clock rollback, late arrival, and equal timestamp fixtures.
 - [x] 2.4 Define the platform adapter contract and bounded event channel; verify fake adapters can be started, stopped, faulted, and restarted without blocking the core.
 
 ## 3. Privacy Policy and Encrypted Storage
 
-- [ ] 3.1 Implement the pre-persistence application, window-pattern, website, and private-context policy evaluator; verify excluded fixture content never reaches the storage mock or diagnostics logs.
-- [ ] 3.2 Implement SQLCipher-backed SQLite initialization, WAL mode, migrations, and OS credential-store key retrieval; verify a database cannot be opened without its generated key and reopens across app restarts.
+- [x] 3.1 Implement the pre-persistence application, window-pattern, website, and private-context policy evaluator; verify excluded fixture content never reaches the storage mock or diagnostics logs.
+- [x] 3.2 Implement SQLCipher-backed SQLite initialization, WAL mode, migrations, and OS credential-store key retrieval; verify a database cannot be opened without its generated key and reopens across app restarts.
 - [ ] 3.3 Implement repositories for sources, raw events, sessions, segments, links, summary revisions, policies, clients, and imports; verify transactional CRUD and rollback tests for every repository.
 - [ ] 3.4 Implement the retention worker with a 48-hour default and shorter/no-raw-history options; verify boundary timestamps and linked search indexes are deleted transactionally.
 - [ ] 3.5 Implement single-segment, recent-period, current-day, date-range, and all-history deletion; verify each integration test removes raw, derived, indexed, and managed temporary-export data in scope only.

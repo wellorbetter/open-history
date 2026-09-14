@@ -18,7 +18,7 @@
 
 </div>
 
-![OpenHistory compact macOS menu-bar surface](docs/openhistory-preview.png)
+![OpenHistory product preview](docs/openhistory-hero.svg)
 
 OpenHistory is an open, local-first activity timeline for macOS and Windows. It turns consented
 semantic accessibility events into deterministic, resumable work context—without screenshots,
@@ -28,11 +28,21 @@ audio recording, or raw-key logging.
 > builds are available. Native collection and production storage are still being completed; do not
 > use this build as a daily activity recorder yet.
 
-## Why OpenHistory
+## About
 
-Computer history should be available to the person who created it, independent of product region
-gates and cloud accounts. OpenHistory keeps the primary record on your device and exposes bounded,
-read-only context to tools only after separate approval.
+Computer History can make work resumable, but today that context may be unavailable in your region,
+locked inside one product, or exposed without the controls needed for sensitive desktop activity.
+OpenHistory is the local-first alternative: your primary record stays on your device, works without
+a cloud account, and becomes available to tools only through separately approved read-only access.
+
+| Computer History pain point   | OpenHistory direction                                            |
+| :---------------------------- | :--------------------------------------------------------------- |
+| Region-gated availability     | Open source and self-hosted on your own computer.                |
+| History locked to one product | Versioned export, local API, and MCP interoperability.           |
+| Unclear capture boundaries    | Semantic events only; no screenshots, audio, or raw keys.        |
+| Cloud dependency              | Deterministic capture, segmentation, and summaries work locally. |
+
+## At a glance
 
 | Glance          | Detail                                                                    |
 | :-------------- | :------------------------------------------------------------------------ |

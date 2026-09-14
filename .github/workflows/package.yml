@@ -2,19 +2,13 @@ name: Unsigned desktop packages
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'src-tauri/**'
-      - 'crates/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   package:
@@ -58,6 +52,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
+          retention-days: 1
           path: |
             target/release/openhistory*
             target/release/SHA256SUMS.txt

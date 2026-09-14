@@ -1,0 +1,184 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title description">
+  <title id="title">OpenHistory desktop activity timeline</title>
+  <desc id="description">A polished product preview showing OpenHistory as a local-first macOS menu-bar and Windows tray timeline.</desc>
+  <defs>
+    <linearGradient id="background" x1="120" y1="40" x2="1490" y2="860" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAF4"/>
+      <stop offset="0.5" stop-color="#EEF8EF"/>
+      <stop offset="1" stop-color="#E3F4E8"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#AEE8A8"/>
+      <stop offset="1" stop-color="#D7F0C8"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="820" y1="90" x2="1400" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FBFDF9" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#F4F9F2" stop-opacity="0.95"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(1280 170) rotate(125) scale(520 640)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B8E8B3" stop-opacity="0.64"/>
+      <stop offset="1" stop-color="#B8E8B3" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="28" stdDeviation="38" flood-color="#274D39" flood-opacity="0.18"/>
+    </filter>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#274D39" flood-opacity="0.12"/>
+    </filter>
+    <clipPath id="panelClip">
+      <rect x="824" y="88" width="620" height="724" rx="42"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1600" height="900" rx="40" fill="url(#background)"/>
+  <circle cx="1306" cy="154" r="520" fill="url(#glow)"/>
+  <path d="M0 720C280 630 500 790 780 716C1080 636 1298 688 1600 566V900H0Z" fill="#D9EFDD" fill-opacity="0.42"/>
+
+  <g transform="translate(120 124)">
+    <g filter="url(#softShadow)">
+      <rect width="76" height="76" rx="22" fill="url(#brand)"/>
+    </g>
+    <path d="M38 16c2.1 14.8 7.7 20.4 22.5 22.5C45.7 40.6 40.1 46.2 38 61c-2.1-14.8-7.7-20.4-22.5-22.5C30.3 36.4 35.9 30.8 38 16Z" fill="none" stroke="#173A2B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M59 50c.8 5.3 2.8 7.3 8.1 8.1-5.3.8-7.3 2.8-8.1 8.1-.8-5.3-2.8-7.3-8.1-8.1 5.3-.8 7.3-2.8 8.1-8.1Z" fill="none" stroke="#173A2B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <text x="0" y="142" fill="#15251C" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="68" font-weight="740" letter-spacing="-2.5">OpenHistory</text>
+    <text x="0" y="202" fill="#315A46" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="28" font-weight="520">Your work context, remembered locally.</text>
+
+    <text x="0" y="292" fill="#52675B" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="22">An open activity timeline for macOS and Windows.</text>
+    <text x="0" y="326" fill="#52675B" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="22">Semantic context in. Useful history out. Nothing invasive.</text>
+
+    <g transform="translate(0 388)">
+      <g>
+        <rect width="176" height="48" rx="24" fill="#FFFFFF" fill-opacity="0.78" stroke="#C9DED0"/>
+        <path d="M24 15h15v18H24zM28 12h7M29 19h5M29 24h5M29 29h5" fill="none" stroke="#34785A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="52" y="31" fill="#315A46" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="650">No screenshots</text>
+      </g>
+      <g transform="translate(190)">
+        <rect width="140" height="48" rx="24" fill="#FFFFFF" fill-opacity="0.78" stroke="#C9DED0"/>
+        <path d="M25 17v14M30 14v20M35 19v10M40 16v16" fill="none" stroke="#34785A" stroke-width="2" stroke-linecap="round"/>
+        <path d="M21 13l23 23" stroke="#34785A" stroke-width="2" stroke-linecap="round"/>
+        <text x="54" y="31" fill="#315A46" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="650">No audio</text>
+      </g>
+      <g transform="translate(344)">
+        <rect width="164" height="48" rx="24" fill="#FFFFFF" fill-opacity="0.78" stroke="#C9DED0"/>
+        <rect x="20" y="15" width="27" height="18" rx="4" fill="none" stroke="#34785A" stroke-width="2"/>
+        <path d="M25 20h3M32 20h3M39 20h3M25 25h3M32 25h3M39 25h3M25 30h17" stroke="#34785A" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M20 13l28 22" stroke="#34785A" stroke-width="2" stroke-linecap="round"/>
+        <text x="60" y="31" fill="#315A46" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="650">No raw keys</text>
+      </g>
+    </g>
+
+    <g transform="translate(0 498)">
+      <line x1="0" y1="0" x2="510" y2="0" stroke="#C8DACD"/>
+      <text x="0" y="48" fill="#6A7D71" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" letter-spacing="1.8">LOCAL-FIRST · PRIVATE BY DEFAULT</text>
+      <g transform="translate(0 86)">
+        <circle cx="12" cy="12" r="12" fill="#3C8B66"/>
+        <path d="m7 12 3.2 3.3L17 8.7" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="38" y="18" fill="#263B2F" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="19">Deterministic offline timeline</text>
+      </g>
+      <g transform="translate(0 132)">
+        <circle cx="12" cy="12" r="12" fill="#3C8B66"/>
+        <path d="m7 12 3.2 3.3L17 8.7" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="38" y="18" fill="#263B2F" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="19">Encrypted storage and retention controls</text>
+      </g>
+      <g transform="translate(0 178)">
+        <circle cx="12" cy="12" r="12" fill="#3C8B66"/>
+        <path d="m7 12 3.2 3.3L17 8.7" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="38" y="18" fill="#263B2F" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="19">Explicit read-only agent access</text>
+      </g>
+    </g>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="824" y="88" width="620" height="724" rx="42" fill="url(#panel)" stroke="#C9DCCB" stroke-width="2"/>
+  </g>
+  <g clip-path="url(#panelClip)">
+    <rect x="824" y="88" width="620" height="80" fill="#FFFFFF" fill-opacity="0.48"/>
+    <circle cx="866" cy="128" r="7" fill="#EF8377"/>
+    <circle cx="892" cy="128" r="7" fill="#E7BD5C"/>
+    <circle cx="918" cy="128" r="7" fill="#72BF7D"/>
+    <rect x="1045" y="112" width="180" height="32" rx="16" fill="#FFFFFF" fill-opacity="0.75" stroke="#D8E5DA"/>
+    <circle cx="1064" cy="128" r="6" fill="#3C8B66"/>
+    <text x="1080" y="133" fill="#51675A" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="650">Recording locally</text>
+
+    <g transform="translate(860 190)">
+      <rect width="548" height="148" rx="26" fill="#FFFFFF" fill-opacity="0.82" stroke="#CCE0D1"/>
+      <text x="28" y="35" fill="#3C8B66" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="750" letter-spacing="1">NOW</text>
+      <circle cx="28" cy="70" r="9" fill="#3C8B66" fill-opacity="0.16"/>
+      <circle cx="28" cy="70" r="5" fill="#3C8B66"/>
+      <text x="50" y="77" fill="#18251D" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="22" font-weight="730">Harness Evidence Gate</text>
+      <text x="50" y="110" fill="#708076" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="15">16:50–17:10 · 20 min</text>
+      <g transform="translate(391 50)">
+        <rect width="38" height="38" rx="10" fill="#202723"/>
+        <path d="m11 13 6 6-6 6M20 25h8" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="44" width="38" height="38" rx="10" fill="#E8F1F4" stroke="#D2E0DC"/>
+        <path d="M54 10h18v18H54zM58 10v18M63 10v18M68 10v18" fill="none" stroke="#5D87A0" stroke-width="1.4"/>
+        <rect x="88" width="38" height="38" rx="10" fill="#6E9EEF"/>
+        <path d="M100 11h9v5h5v11h-14zM109 11v5h5" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round"/>
+      </g>
+    </g>
+
+    <g transform="translate(860 380)">
+      <text x="0" y="0" fill="#3C8B66" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="750" letter-spacing="1.2">TODAY</text>
+      <text x="0" y="40" fill="#18251D" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="31" font-weight="740">Tue, Sep 8</text>
+      <rect x="406" y="7" width="44" height="44" rx="22" fill="#FFFFFF" stroke="#D8E5DA"/>
+      <path d="m433 20-8 9 8 9" fill="none" stroke="#64776B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="460" y="7" width="44" height="44" rx="22" fill="#FFFFFF" fill-opacity="0.5" stroke="#E0E9E2"/>
+      <path d="m477 20 8 9-8 9" fill="none" stroke="#A9B6AE" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <g transform="translate(0 82)">
+        <text x="0" y="27" fill="#718178" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="17" font-weight="650">16:50</text>
+        <line x1="73" y1="28" x2="73" y2="90" stroke="#C3D9CA" stroke-width="2"/>
+        <circle cx="73" cy="25" r="8" fill="#EBF5ED" stroke="#3C8B66" stroke-width="4"/>
+        <rect x="96" width="452" height="64" rx="18" fill="#FFFFFF" fill-opacity="0.74"/>
+        <text x="116" y="38" fill="#213027" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="17" font-weight="680">Harness Evidence Gate</text>
+        <rect x="387" y="17" width="28" height="28" rx="8" fill="#202723"/>
+        <rect x="420" y="17" width="28" height="28" rx="8" fill="#6E9EEF"/>
+        <text x="467" y="36" fill="#2F7E58" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700">2 merged</text>
+      </g>
+
+      <g transform="translate(0 158)">
+        <text x="0" y="27" fill="#718178" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="17" font-weight="650">16:40</text>
+        <line x1="73" y1="28" x2="73" y2="90" stroke="#C3D9CA" stroke-width="2"/>
+        <circle cx="73" cy="25" r="7" fill="#F7FBF7" stroke="#3C8B66" stroke-width="3"/>
+        <rect x="96" width="452" height="64" rx="18" fill="#FFFFFF" fill-opacity="0.74"/>
+        <text x="116" y="38" fill="#213027" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="17" font-weight="680">Adapter verification</text>
+        <rect x="387" y="17" width="28" height="28" rx="8" fill="#202723"/>
+        <rect x="420" y="17" width="28" height="28" rx="8" fill="#E8F1F4" stroke="#D2E0DC"/>
+        <text x="481" y="36" fill="#2F7E58" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700">10 min</text>
+      </g>
+
+      <g transform="translate(0 234)">
+        <text x="0" y="27" fill="#718178" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="17" font-weight="650">16:20</text>
+        <line x1="73" y1="28" x2="73" y2="90" stroke="#C3D9CA" stroke-width="2"/>
+        <circle cx="73" cy="25" r="7" fill="#F7FBF7" stroke="#3C8B66" stroke-width="3"/>
+        <rect x="96" width="452" height="64" rx="18" fill="#FFFFFF" fill-opacity="0.74"/>
+        <text x="116" y="38" fill="#213027" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="17" font-weight="680">Proactive release work</text>
+        <rect x="387" y="17" width="28" height="28" rx="8" fill="#202723"/>
+        <rect x="420" y="17" width="28" height="28" rx="8" fill="#6E9EEF"/>
+        <text x="467" y="36" fill="#2F7E58" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700">2 merged</text>
+      </g>
+
+      <g transform="translate(0 310)">
+        <text x="0" y="27" fill="#718178" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="17" font-weight="650">16:10</text>
+        <circle cx="73" cy="25" r="7" fill="#F7FBF7" stroke="#3C8B66" stroke-width="3"/>
+        <rect x="96" width="452" height="64" rx="18" fill="#FFFFFF" fill-opacity="0.74"/>
+        <text x="116" y="38" fill="#213027" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="17" font-weight="680">Active intelligence notes</text>
+        <rect x="387" y="17" width="28" height="28" rx="8" fill="#202723"/>
+        <text x="481" y="36" fill="#2F7E58" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700">10 min</text>
+      </g>
+    </g>
+
+    <rect x="824" y="764" width="620" height="48" fill="#F4F8F2" fill-opacity="0.94"/>
+    <text x="860" y="794" fill="#7B8C81" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="13">Local-only · raw events expire in 48h</text>
+    <text x="1340" y="794" text-anchor="end" fill="#7B8C81" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="13">Updated 17:13</text>
+  </g>
+
+  <g transform="translate(120 836)">
+    <circle cx="8" cy="8" r="8" fill="#3C8B66"/>
+    <text x="28" y="14" fill="#51675A" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="640">macOS menu bar</text>
+    <circle cx="203" cy="8" r="8" fill="#739DE6"/>
+    <text x="223" y="14" fill="#51675A" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="640">Windows tray</text>
+    <text x="1324" y="14" text-anchor="end" fill="#60756A" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="650" letter-spacing="1.2">OPEN · LOCAL · YOURS</text>
+  </g>
+</svg>

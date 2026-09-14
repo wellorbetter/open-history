@@ -1,24 +1,77 @@
+<div align="center">
+
+<img src="src-tauri/icons/icon.svg" width="88" alt="OpenHistory icon">
+
 # OpenHistory
 
-OpenHistory is an open, local-first desktop activity history for macOS and Windows. It turns
-consented semantic accessibility events into deterministic, resumable work context without screen
-recording, audio recording, or raw-key logging.
+<p>Your work context, remembered locally.</p>
 
-The compact menu-bar/tray surface shows current work and a daily timeline. A full window provides
-review, search, correction, export, deletion, privacy settings, and separately approved read-only
-agent access.
+<p>
+  <a href="https://github.com/wellorbetter/open-history/actions/workflows/check.yml"><img alt="Checks" src="https://img.shields.io/github/actions/workflow/status/wellorbetter/open-history/check.yml?branch=main&amp;style=flat-square&amp;labelColor=242938&amp;color=80dfb7&amp;label=checks"></a>
+  <a href="https://tauri.app"><img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-7fc9ed?style=flat-square&amp;labelColor=242938&amp;logo=tauri&amp;logoColor=white"></a>
+  <img alt="macOS and Windows" src="https://img.shields.io/badge/platform-macOS_%2F_Windows-baa7f5?style=flat-square&amp;labelColor=242938">
+  <a href="README.zh-CN.md"><img alt="Documentation in English and Simplified Chinese" src="https://img.shields.io/badge/docs-English_%2F_%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-e5c181?style=flat-square&amp;labelColor=242938"></a>
+</p>
 
-## Status
+<p><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
+<p><a href="#why-openhistory">Why</a> · <a href="#privacy-by-design">Privacy</a> · <a href="#development">Development</a></p>
 
-Private alpha implementation. The React fixture UI and Rust domain core are under active OpenSpec
-development in `openspec/changes/build-open-history-desktop`.
+</div>
 
-## Start
+![OpenHistory compact macOS menu-bar surface](docs/openhistory-preview.png)
 
-```bash
+OpenHistory is an open, local-first activity timeline for macOS and Windows. It turns consented
+semantic accessibility events into deterministic, resumable work context—without screenshots,
+audio recording, or raw-key logging.
+
+> **Private alpha:** the fixture UI, domain core, privacy boundary, and unsigned cross-platform
+> builds are available. Native collection and production storage are still being completed; do not
+> use this build as a daily activity recorder yet.
+
+## Why OpenHistory
+
+Computer history should be available to the person who created it, independent of product region
+gates and cloud accounts. OpenHistory keeps the primary record on your device and exposes bounded,
+read-only context to tools only after separate approval.
+
+| Glance          | Detail                                                                    |
+| :-------------- | :------------------------------------------------------------------------ |
+| **Compact**     | A menu-bar popover on macOS and notification-area flyout on Windows.      |
+| **Useful**      | Current work, daily timeline, search, corrections, summaries, and export. |
+| **Local-first** | Deterministic processing works offline; model enrichment is optional.     |
+| **Agent-ready** | Versioned local API and read-only MCP access are explicit opt-ins.        |
+
+## Privacy by design
+
+- Collection stays off until consent and operating-system permission are both present.
+- Application, window, website, and private-browser exclusions run before persistence.
+- Raw events expire after 48 hours by default; shorter retention and no-raw-history are supported.
+- The database uses SQLCipher; its random key belongs in Keychain or Windows Credential Manager.
+- Captured text is untrusted data. It never becomes an instruction or executable action.
+
+See the complete [privacy model](docs/privacy.md) and [architecture](docs/architecture.md).
+
+## Development
+
+Prerequisites: Node.js 24, Rust 1.89, and the [Tauri 2 system dependencies](https://tauri.app/start/prerequisites/).
+
+```sh
+git clone https://github.com/wellorbetter/open-history.git
+cd open-history
 npm ci
-npm run dev
+make check
+npm run tauri dev
 ```
 
-See [local development](docs/development.md), [architecture](docs/architecture.md),
-[privacy](docs/privacy.md), and [contributing](CONTRIBUTING.md).
+For the browser-only fixture UI, run `npm run dev`, then open `?surface=compact`,
+`?surface=history`, or `?surface=setup`.
+
+The implementation is tracked as an [OpenSpec change](openspec/changes/build-open-history-desktop/).
+See [local development](docs/development.md) and [contributing](CONTRIBUTING.md) before changing the
+capture or privacy boundaries.
+
+## Project status
+
+OpenHistory is under active development. GitHub Actions verifies the frontend and Rust workspace on
+macOS and Windows and produces unsigned development binaries. Signed installers and stable releases
+will follow only after the complete privacy and end-to-end acceptance suite passes.

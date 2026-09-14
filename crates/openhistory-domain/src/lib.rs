@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -67,6 +67,46 @@ impl EventEnvelope {
             event_id: self.event_id,
         }
     }
+}
+
+/// Returns events in a deterministic global order while preserving adapter-local monotonic order.
+///
+/// Wall-clock values are normalized to UTC. Within one adapter instance, a clock rollback is
+/// clamped to the last observed instant and resolved by the monotonic counter. Equal instants from
+/// different sources use source identity and event identity as deterministic tie breakers.
+#[must_use]
+pub fn normalize_event_order(events: &[EventEnvelope]) -> Vec<EventEnvelope> {
+    let mut adapter_order = events.to_vec();
+    adapter_order.sort_by(|left, right| {
+        left.source
+            .source_id
+            .cmp(&right.source.source_id)
+            .then_with(|| left.ordering_key().cmp(&right.ordering_key()))
+    });
+
+    let mut decorated = Vec::with_capacity(adapter_order.len());
+    let mut active_source: Option<String> = None;
+    let mut latest_instant: Option<DateTime<Utc>> = None;
+
+    for event in adapter_order {
+        if active_source.as_deref() != Some(event.source.source_id.as_str()) {
+            active_source = Some(event.source.source_id.clone());
+            latest_instant = None;
+        }
+        let observed = event.occurred_at.with_timezone(&Utc);
+        let effective = latest_instant.map_or(observed, |latest| latest.max(observed));
+        latest_instant = Some(effective);
+        decorated.push((effective, event));
+    }
+
+    decorated.sort_by(|(left_instant, left), (right_instant, right)| {
+        left_instant
+            .cmp(right_instant)
+            .then_with(|| left.source.source_id.cmp(&right.source.source_id))
+            .then_with(|| left.monotonic_ticks.cmp(&right.monotonic_ticks))
+            .then_with(|| left.event_id.cmp(&right.event_id))
+    });
+    decorated.into_iter().map(|(_, event)| event).collect()
 }
 
 /// Device-local adapter and application provenance.
@@ -312,5 +352,63 @@ mod tests {
             SemanticPayload::ApplicationActivated,
         );
         assert!(first.ordering_key() < second.ordering_key());
+    }
+
+    #[test]
+    fn normalized_order_handles_dst_offsets_and_late_arrival() {
+        let first = EventEnvelope {
+            event_id: Uuid::from_u128(1),
+            ..EventEnvelope::new(
+                DateTime::parse_from_rfc3339("2026-11-01T01:30:00-04:00").unwrap(),
+                10,
+                source(),
+                CaptureQuality::Window,
+                SemanticPayload::ApplicationActivated,
+            )
+        };
+        let second = EventEnvelope {
+            event_id: Uuid::from_u128(2),
+            ..EventEnvelope::new(
+                DateTime::parse_from_rfc3339("2026-11-01T01:15:00-05:00").unwrap(),
+                11,
+                source(),
+                CaptureQuality::Window,
+                SemanticPayload::ApplicationActivated,
+            )
+        };
+
+        let ordered = normalize_event_order(&[second.clone(), first.clone()]);
+        assert_eq!(ordered, [first, second]);
+    }
+
+    #[test]
+    fn normalized_order_clamps_clock_rollback_and_breaks_equal_timestamps() {
+        let mut first = EventEnvelope::new(
+            DateTime::parse_from_rfc3339("2026-09-08T16:00:00+08:00").unwrap(),
+            40,
+            source(),
+            CaptureQuality::Window,
+            SemanticPayload::ApplicationActivated,
+        );
+        first.event_id = Uuid::from_u128(1);
+        let mut rollback = EventEnvelope::new(
+            DateTime::parse_from_rfc3339("2026-09-08T15:59:59+08:00").unwrap(),
+            41,
+            source(),
+            CaptureQuality::Window,
+            SemanticPayload::ApplicationActivated,
+        );
+        rollback.event_id = Uuid::from_u128(2);
+        let mut equal = EventEnvelope::new(
+            DateTime::parse_from_rfc3339("2026-09-08T16:00:00+08:00").unwrap(),
+            42,
+            source(),
+            CaptureQuality::Window,
+            SemanticPayload::ApplicationActivated,
+        );
+        equal.event_id = Uuid::from_u128(3);
+
+        let ordered = normalize_event_order(&[equal.clone(), rollback.clone(), first.clone()]);
+        assert_eq!(ordered, [first, rollback, equal]);
     }
 }

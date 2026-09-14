@@ -3,7 +3,9 @@
 use std::collections::BTreeSet;
 
 use chrono::{DateTime, Duration, FixedOffset};
-use openhistory_domain::{CaptureQuality, EventEnvelope, LifecycleBoundary, SemanticPayload};
+use openhistory_domain::{
+    CaptureQuality, EventEnvelope, LifecycleBoundary, SemanticPayload, normalize_event_order,
+};
 use serde::{Deserialize, Serialize};
 
 /// Version of the deterministic segmentation policy.
@@ -64,8 +66,7 @@ pub fn segment_events(
     events: &[EventEnvelope],
     settings: SegmentationSettings,
 ) -> Vec<TaskSegment> {
-    let mut ordered = events.to_vec();
-    ordered.sort_by_key(EventEnvelope::ordering_key);
+    let ordered = normalize_event_order(events);
 
     let mut groups: Vec<Vec<EventEnvelope>> = Vec::new();
     for event in ordered {

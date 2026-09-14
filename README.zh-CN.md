@@ -14,11 +14,13 @@
 </p>
 
 <p><a href="README.md">English</a> · <strong>简体中文</strong></p>
-<p><a href="#为什么做-openhistory">为什么</a> · <a href="#隐私优先">隐私</a> · <a href="#开发">开发</a></p>
+<p><a href="#about--为什么做-openhistory">为什么</a> · <a href="#隐私优先">隐私</a> · <a href="#开发">开发</a></p>
 
 </div>
 
-![OpenHistory 产品预览](docs/openhistory-hero.svg)
+<p align="center">
+  <img src="docs/openhistory-hero.svg" width="960" alt="OpenHistory 本地优先桌面活动时间线产品预览">
+</p>
 
 OpenHistory 是面向 macOS 和 Windows 的开源、本地优先活动时间线。它把经用户同意的语义
 辅助功能事件整理成确定、可恢复的工作上下文；不截屏、不录音，也不记录原始按键。

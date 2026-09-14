@@ -14,11 +14,13 @@
 </p>
 
 <p><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
-<p><a href="#why-openhistory">Why</a> · <a href="#privacy-by-design">Privacy</a> · <a href="#development">Development</a></p>
+<p><a href="#about">Why</a> · <a href="#privacy-by-design">Privacy</a> · <a href="#development">Development</a></p>
 
 </div>
 
-![OpenHistory product preview](docs/openhistory-hero.svg)
+<p align="center">
+  <img src="docs/openhistory-hero.svg" width="960" alt="OpenHistory product preview showing a local-first desktop activity timeline">
+</p>
 
 OpenHistory is an open, local-first activity timeline for macOS and Windows. It turns consented
 semantic accessibility events into deterministic, resumable work context—without screenshots,
@@ -37,7 +39,7 @@ a cloud account, and becomes available to tools only through separately approved
 
 | Computer History pain point   | OpenHistory direction                                            |
 | :---------------------------- | :--------------------------------------------------------------- |
-| Region-gated availability     | Open source and self-hosted on your own computer.                |
+| Region-gated availability     | Open source and runs directly on your own computer.              |
 | History locked to one product | Versioned export, local API, and MCP interoperability.           |
 | Unclear capture boundaries    | Semantic events only; no screenshots, audio, or raw keys.        |
 | Cloud dependency              | Deterministic capture, segmentation, and summaries work locally. |

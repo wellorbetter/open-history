@@ -391,8 +391,7 @@ mod tests {
         }
 
         fn save(&self, key: &DatabaseKey) -> Result<(), StorageError> {
-            self.value
-                .replace(Some(key.expose_for_store().to_owned()));
+            self.value.replace(Some(key.expose_for_store().to_owned()));
             Ok(())
         }
     }

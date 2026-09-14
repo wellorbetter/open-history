@@ -203,8 +203,6 @@ mod tests {
             PolicyDecision::Exclude(ExclusionReason::MalformedUrl)
         );
     }
-
-
     #[test]
     fn excluded_content_never_reaches_builder_storage_or_diagnostics() {
         let sensitive = "bank-token-never-forward";

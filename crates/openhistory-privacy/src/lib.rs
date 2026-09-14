@@ -174,6 +174,7 @@ mod tests {
         assert_eq!(
             policy().evaluate(CandidateContext {
                 application: Some("Browser"),
+                application_id: None,
                 window_title: Some("unknown"),
                 url: None,
                 private_context: true,

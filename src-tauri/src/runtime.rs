@@ -27,7 +27,7 @@ pub struct CollectorRuntime {
 }
 
 impl CollectorRuntime {
-    /// Initializes SQLCipher with a random key held by the OS credential store.
+    /// Initializes `SQLCipher` with a random key held by the OS credential store.
     ///
     /// # Errors
     ///

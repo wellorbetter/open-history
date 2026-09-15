@@ -2780,10 +2780,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axuielement",
- "blake3",
  "chrono",
  "openhistory-adapters",
  "openhistory-domain",
+ "openhistory-entities",
  "openhistory-privacy",
  "tokio",
 ]

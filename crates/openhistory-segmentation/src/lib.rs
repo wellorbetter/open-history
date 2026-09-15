@@ -116,6 +116,14 @@ pub fn continuity_score(previous: &EventEnvelope, next: &EventEnvelope) -> f32 {
     let project_score = match (project_id(previous), project_id(next)) {
         (Some(left), Some(right)) if left == right => 0.42,
         (Some(_), Some(_)) => 0.0,
+        // Neither side resolved a project entity (no opted-in repository matched, or the
+        // application has no known title convention): fall back to comparing window titles. This
+        // is a weaker signal than confirmed project identity, so it scores below the matched case
+        // even when titles agree exactly.
+        (None, None) => match (window_title(previous), window_title(next)) {
+            (Some(left), Some(right)) if left == right => 0.25,
+            _ => 0.12,
+        },
         _ => 0.12,
     };
     let quality_factor = match previous.quality.min(next.quality) {
@@ -133,6 +141,13 @@ fn explicit_project_change(previous: &EventEnvelope, next: &EventEnvelope) -> bo
 fn project_id(event: &EventEnvelope) -> Option<&str> {
     match &event.payload {
         SemanticPayload::WindowChanged { project_id, .. } => project_id.as_deref(),
+        _ => None,
+    }
+}
+
+fn window_title(event: &EventEnvelope) -> Option<&str> {
+    match &event.payload {
+        SemanticPayload::WindowChanged { window_title, .. } => window_title.as_deref(),
         _ => None,
     }
 }
@@ -269,5 +284,50 @@ mod tests {
         value.quality = CaptureQuality::ApplicationOnly;
         let segment = segment_events(&[value], SegmentationSettings::default());
         assert_eq!(segment[0].confidence, SegmentConfidence::Low);
+    }
+
+    fn with_title(mut value: EventEnvelope, title: &str) -> EventEnvelope {
+        if let SemanticPayload::WindowChanged { window_title, .. } = &mut value.payload {
+            *window_title = Some(title.to_owned());
+        }
+        value
+    }
+
+    #[test]
+    fn matching_project_identity_scores_above_the_title_fallback() {
+        let same_project = continuity_score(
+            &event(1, 0, "Editor", Some("project-a")),
+            &event(2, 1, "Editor", Some("project-a")),
+        );
+        let unresolved_but_same_title = continuity_score(
+            &with_title(event(1, 0, "Editor", None), "notes.txt"),
+            &with_title(event(2, 1, "Editor", None), "notes.txt"),
+        );
+        let unresolved_and_different_title = continuity_score(
+            &with_title(event(1, 0, "Editor", None), "notes.txt"),
+            &with_title(event(2, 1, "Editor", None), "other.txt"),
+        );
+
+        // Real project identity beats a title match, which in turn beats no signal at all: an
+        // unresolved observation is never treated as more confident than a resolved one.
+        assert!(same_project > unresolved_but_same_title);
+        assert!(unresolved_but_same_title > unresolved_and_different_title);
+    }
+
+    #[test]
+    fn title_fallback_only_applies_when_neither_side_resolved_a_project() {
+        let resolved_versus_unresolved_matching_title = continuity_score(
+            &event(1, 0, "Editor", Some("project-a")),
+            &with_title(event(2, 1, "Editor", None), "notes.txt"),
+        );
+        let both_unresolved_matching_title = continuity_score(
+            &with_title(event(1, 0, "Editor", None), "notes.txt"),
+            &with_title(event(2, 1, "Editor", None), "notes.txt"),
+        );
+
+        // A resolved project on only one side is not "neither side resolved a project": it must
+        // not receive the title-fallback bonus even when titles happen to match, and so should
+        // score no higher than the neutral, no-signal case.
+        assert!(resolved_versus_unresolved_matching_title < both_unresolved_matching_title);
     }
 }

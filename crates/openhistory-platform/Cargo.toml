@@ -6,10 +6,10 @@ rust-version.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-blake3.workspace = true
 chrono.workspace = true
 openhistory-adapters = { path = "../openhistory-adapters" }
 openhistory-domain = { path = "../openhistory-domain" }
+openhistory-entities = { path = "../openhistory-entities" }
 openhistory-privacy = { path = "../openhistory-privacy" }
 tokio.workspace = true
 

@@ -27,6 +27,7 @@ use axuielement::{
 use chrono::Local;
 use openhistory_adapters::{AdapterError, EventSender};
 use openhistory_domain::{CaptureQuality, EventEnvelope, SemanticPayload};
+use openhistory_entities::Resolver;
 use openhistory_privacy::{CandidateContext, PolicyDecision, PrivacyPolicy};
 use tokio::sync::watch;
 
@@ -62,6 +63,7 @@ pub(super) async fn run_collector(
     mut stop: watch::Receiver<bool>,
     detail: CaptureDetail,
     policy: PrivacyPolicy,
+    resolver: Resolver,
     running: Arc<AtomicBool>,
 ) {
     let mut previous: Option<PlatformSnapshot> = None;
@@ -105,6 +107,7 @@ pub(super) async fn run_collector(
                     &current,
                     detail,
                     &policy,
+                    &resolver,
                     Local::now().fixed_offset(),
                     ticks,
                 );
@@ -132,6 +135,7 @@ pub(super) async fn run_collector(
                     &current,
                     detail,
                     &policy,
+                    &resolver,
                     Local::now().fixed_offset(),
                     ticks,
                 );

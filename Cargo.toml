@@ -6,6 +6,7 @@ members = [
   "crates/openhistory-repository",
   "crates/openhistory-agent-sessions",
   "crates/openhistory-digest",
+  "crates/openhistory-source-status",
   "crates/openhistory-demo",
   "crates/openhistory-adapters",
   "crates/openhistory-platform",

@@ -2822,6 +2822,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "openhistory-source-status"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+]
+
+[[package]]
 name = "openhistory-storage"
 version = "0.1.0"
 dependencies = [

@@ -9,7 +9,7 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-use openhistory_domain::{EntityKey, EventEnvelope, normalize_event_order};
+use openhistory_domain::{EntityKey, EventEnvelope, SemanticPayload, normalize_event_order};
 use openhistory_segmentation::TaskSegment;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
@@ -394,6 +394,49 @@ impl HistoryRepository for EncryptedDatabase {
         };
         rows.filter_map(Result::ok).collect()
     }
+
+    fn delete_repository_evidence(
+        &mut self,
+        root_path: &str,
+    ) -> Result<DeletionReport, StorageError> {
+        let Some(normalized_root) = normalized_repository_root(root_path) else {
+            return Ok(DeletionReport::default());
+        };
+
+        let matching_ids: Vec<String> = {
+            let mut statement = self
+                .connection
+                .prepare("SELECT event_id, event_json FROM raw_events")
+                .map_err(|_| StorageError::Database)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|_| StorageError::Database)?;
+            rows.filter_map(Result::ok)
+                .filter_map(|(event_id, event_json)| {
+                    let event: EventEnvelope = serde_json::from_str(&event_json).ok()?;
+                    commit_matches_repository(&event, &normalized_root).then_some(event_id)
+                })
+                .collect()
+        };
+
+        let transaction = self
+            .connection
+            .transaction()
+            .map_err(|_| StorageError::Database)?;
+        for event_id in &matching_ids {
+            transaction
+                .execute("DELETE FROM raw_events WHERE event_id = ?1", [event_id])
+                .map_err(|_| StorageError::RolledBack)?;
+        }
+        transaction.commit().map_err(|_| StorageError::RolledBack)?;
+
+        Ok(DeletionReport {
+            raw_events: matching_ids.len(),
+            segments: 0,
+        })
+    }
 }
 /// Supported raw-event retention settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -470,12 +513,42 @@ pub trait HistoryRepository {
 
     /// Returns every opted-in repository root, normalized and in a stable order.
     fn opted_in_repositories(&self) -> Vec<String>;
+
+    /// Deletes every stored event whose evidence came from `root_path`, regardless of whether the
+    /// repository is still opted in.
+    ///
+    /// This is what makes exclusion retroactive: opting a repository out stops future collection
+    /// through [`HistoryRepository::remove_repository`], and this removes what was already
+    /// stored. The two are separate calls so a caller can withdraw access without necessarily
+    /// discarding history, or vice versa.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when cleanup cannot complete transactionally.
+    fn delete_repository_evidence(
+        &mut self,
+        root_path: &str,
+    ) -> Result<DeletionReport, StorageError>;
 }
 
 /// Normalizes a repository root using the same rule the entity resolver's project registry
 /// applies, so a path stored here and a path checked there always agree on identity.
 fn normalized_repository_root(root_path: &str) -> Option<String> {
     EntityKey::repository_path(root_path).map(|key| key.value().to_owned())
+}
+
+/// Returns true when `event` is a `RepositoryCommit` sourced from `normalized_root`.
+///
+/// Comparison happens on the already-normalized root so that trailing-separator or whitespace
+/// differences between how a path was stored and how it is being removed can never cause evidence
+/// to survive its own repository's removal.
+fn commit_matches_repository(event: &EventEnvelope, normalized_root: &str) -> bool {
+    match &event.payload {
+        SemanticPayload::RepositoryCommit {
+            repository_path, ..
+        } => normalized_repository_root(repository_path).as_deref() == Some(normalized_root),
+        _ => false,
+    }
 }
 
 /// In-memory backend for synthetic journeys. It is never used as a production fallback.
@@ -539,6 +612,22 @@ impl HistoryRepository for MemoryHistoryRepository {
     fn opted_in_repositories(&self) -> Vec<String> {
         self.repositories.iter().cloned().collect()
     }
+
+    fn delete_repository_evidence(
+        &mut self,
+        root_path: &str,
+    ) -> Result<DeletionReport, StorageError> {
+        let Some(normalized_root) = normalized_repository_root(root_path) else {
+            return Ok(DeletionReport::default());
+        };
+        let before = self.events.len();
+        self.events
+            .retain(|_, event| !commit_matches_repository(event, &normalized_root));
+        Ok(DeletionReport {
+            raw_events: before - self.events.len(),
+            segments: 0,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -588,6 +677,30 @@ mod tests {
             },
             CaptureQuality::Window,
             SemanticPayload::ApplicationActivated,
+        )
+    }
+
+    fn commit_event(timestamp: &str, ticks: u64, repository_path: &str) -> EventEnvelope {
+        EventEnvelope::new(
+            DateTime::parse_from_rfc3339(timestamp).unwrap(),
+            ticks,
+            SourceIdentity {
+                source_id: "git:fixture".into(),
+                adapter: AdapterKind::Import,
+                application: ApplicationIdentity {
+                    display_name: Some("Git".into()),
+                    platform_id: None,
+                    process_id: None,
+                },
+            },
+            CaptureQuality::Semantic,
+            SemanticPayload::RepositoryCommit {
+                repository_path: repository_path.to_owned(),
+                commit_id: format!("commit-{ticks}"),
+                branch: Some("main".into()),
+                subject: Some("fixture commit".into()),
+                changed_paths: vec!["src/lib.rs".into()],
+            },
         )
     }
 
@@ -753,5 +866,84 @@ mod tests {
             reopened.opted_in_repositories(),
             vec!["/Users/dev/open-history".to_owned()]
         );
+    }
+
+    #[test]
+    fn memory_repository_removal_deletes_only_that_repositorys_evidence() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .insert_event(commit_event("2026-09-14T10:00:00+08:00", 1, "/work/app"))
+            .unwrap();
+        repository
+            .insert_event(commit_event("2026-09-14T11:00:00+08:00", 2, "/work/other"))
+            .unwrap();
+        repository
+            .insert_event(event("2026-09-14T12:00:00+08:00", 3))
+            .unwrap();
+
+        let report = repository.delete_repository_evidence("/work/app").unwrap();
+
+        assert_eq!(report.raw_events, 1);
+        let remaining = repository.events();
+        assert_eq!(remaining.len(), 2);
+        assert!(!remaining.iter().any(|event| commit_matches_repository(
+            event,
+            &normalized_repository_root("/work/app").unwrap()
+        )));
+    }
+
+    #[test]
+    fn deletion_is_a_no_op_for_a_repository_with_no_stored_evidence() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .insert_event(commit_event("2026-09-14T10:00:00+08:00", 1, "/work/app"))
+            .unwrap();
+
+        let report = repository
+            .delete_repository_evidence("/work/never-had-any-commits")
+            .unwrap();
+
+        assert_eq!(report.raw_events, 0);
+        assert_eq!(repository.events().len(), 1);
+    }
+
+    #[test]
+    fn encrypted_repository_removal_deletes_only_that_repositorys_evidence() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("history.sqlite3");
+        let key = DatabaseKey::generate();
+        let mut database = EncryptedDatabase::open(&path, &key).unwrap();
+        database
+            .insert_event(commit_event("2026-09-14T10:00:00+08:00", 1, "/work/app"))
+            .unwrap();
+        database
+            .insert_event(commit_event("2026-09-14T11:00:00+08:00", 2, "/work/other"))
+            .unwrap();
+
+        let report = database.delete_repository_evidence("/work/app/").unwrap();
+
+        assert_eq!(report.raw_events, 1);
+        assert_eq!(database.events().len(), 1);
+    }
+
+    #[test]
+    fn artifact_derived_evidence_is_swept_by_the_same_raw_retention_as_platform_events() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .insert_event(commit_event("2026-09-06T15:59:59+08:00", 1, "/work/app"))
+            .unwrap();
+        repository
+            .insert_event(commit_event("2026-09-06T16:00:00+08:00", 2, "/work/app"))
+            .unwrap();
+
+        let now = DateTime::parse_from_rfc3339("2026-09-08T16:00:00+08:00").unwrap();
+        let report = repository
+            .sweep_retention(now, RetentionPolicy::default())
+            .unwrap();
+
+        // Retention does not special-case a payload kind: the same 48-hour cutoff that applies to
+        // window-activity events applies to repository-commit events, without a parallel sweep.
+        assert_eq!(report.raw_events, 1);
+        assert_eq!(repository.events().len(), 1);
     }
 }

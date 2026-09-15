@@ -76,7 +76,8 @@ impl CollectorRuntime {
         Ok(())
     }
 
-    /// Withdraws a repository from Git evidence collection and project resolution.
+    /// Withdraws a repository from Git evidence collection and project resolution, and deletes
+    /// evidence already stored from it.
     ///
     /// # Errors
     ///
@@ -85,6 +86,7 @@ impl CollectorRuntime {
         {
             let mut database = self.database.lock().map_err(|_| StorageError::Database)?;
             database.remove_repository(root_path)?;
+            database.delete_repository_evidence(root_path)?;
         }
         self.refresh_project_registry().await;
         Ok(())

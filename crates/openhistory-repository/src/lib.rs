@@ -391,4 +391,85 @@ mod tests {
             other => panic!("expected RepositoryCommit, got {other:?}"),
         }
     }
+
+    fn run_git(dir: &std::path::Path, args: &[&str]) {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?} failed in {}", dir.display());
+    }
+
+    #[test]
+    fn a_detached_head_reads_commits_the_same_as_a_branch_checkout() {
+        let repo = init_repo();
+        commit(&repo, "a.txt", "a", "first commit");
+        commit(&repo, "b.txt", "b", "second commit");
+        run_git(repo.path(), &["checkout", "--quiet", "--detach", "HEAD"]);
+
+        let reader = RepositoryReader::new(repo.path());
+        let commits = reader.commits_since(None).unwrap();
+
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[1].subject.as_deref(), Some("second commit"));
+        // A detached HEAD is not on any branch; that must not be confused with a real branch name.
+        assert_eq!(reader.current_branch().unwrap(), None);
+    }
+
+    #[test]
+    fn switching_branches_does_not_fabricate_or_duplicate_commits() {
+        let repo = init_repo();
+        commit(&repo, "a.txt", "a", "on main");
+        let reader = RepositoryReader::new(repo.path());
+        let anchor = reader.commits_since(None).unwrap()[0].commit_id.clone();
+
+        run_git(repo.path(), &["checkout", "--quiet", "-b", "feature"]);
+        commit(&repo, "b.txt", "b", "on feature");
+        run_git(repo.path(), &["checkout", "--quiet", "main"]);
+
+        // The feature commit is not reachable from main: reading from the same anchor on main
+        // must not report it, even though it exists in the repository's object store.
+        let from_main = reader.commits_since(Some(&anchor)).unwrap();
+        assert!(from_main.is_empty());
+
+        run_git(repo.path(), &["checkout", "--quiet", "feature"]);
+        let from_feature = reader.commits_since(Some(&anchor)).unwrap();
+        assert_eq!(from_feature.len(), 1);
+        assert_eq!(from_feature[0].subject.as_deref(), Some("on feature"));
+    }
+
+    #[test]
+    fn a_shallow_clone_reads_its_available_history_without_erroring() {
+        let origin = init_repo();
+        commit(&origin, "a.txt", "a", "first commit");
+        commit(&origin, "b.txt", "b", "second commit");
+        commit(&origin, "c.txt", "c", "third commit");
+
+        let shallow = TempDir::new().unwrap();
+        let status = Command::new("git")
+            .args([
+                "clone",
+                "--quiet",
+                "--depth",
+                "1",
+                "--branch",
+                "main",
+                // A plain local path clone ignores --depth; file:// makes it a real shallow clone.
+                &format!("file://{}", origin.path().display()),
+                &shallow.path().display().to_string(),
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success(), "shallow clone failed");
+
+        let reader = RepositoryReader::new(shallow.path());
+        let commits = reader.commits_since(None).unwrap();
+
+        // A shallow clone only has the tip commit; that boundary must read as "one commit
+        // available", not as an error or as the full three-commit history.
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].subject.as_deref(), Some("third commit"));
+    }
 }

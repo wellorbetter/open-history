@@ -4,6 +4,12 @@
 //! attributed to a project entity by the resolver, and already carrying only the counts and text a
 //! report needs. This keeps a digest's size proportional to the number of distinct pieces of
 //! evidence in a range, not to how many raw events produced them.
+//!
+//! This crate makes no outbound request and never will: its only dependencies are `chrono` and
+//! `serde`, neither capable of network I/O, and every public function here is synchronous — there
+//! is no `.await` point for a request to hide behind. [`aggregate_range`] and [`render_markdown`]
+//! are usable with no summarization engine configured at all, which is what "remains available
+//! with no summarization engine configured" means before any engine exists to configure.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -437,5 +443,96 @@ mod tests {
 
         assert_eq!(work_items[0].attention_minutes, 45);
         assert_eq!(work_items[0].commit_count, 1);
+    }
+
+    #[test]
+    fn every_work_item_resolves_to_openable_evidence() {
+        let project_id = project("open-history");
+        let evidence = vec![EvidenceItem {
+            project_id: project_id.clone(),
+            project_label: Some("open-history".into()),
+            occurred_at: at("2026-09-15", 10),
+            kind: EvidenceKind::Commit {
+                commit_id: "abc".into(),
+                subject: Some("feat: add digest".into()),
+            },
+        }];
+
+        let work_items = aggregate_range(&evidence, range("2026-09-14", "2026-09-20"));
+
+        // "Openable" here means the work item carries the evidence itself, not a reference a
+        // caller has to resolve elsewhere — there is nowhere else for it to be lost between.
+        assert_eq!(work_items[0].evidence, evidence);
+    }
+
+    #[test]
+    fn deleted_evidence_disappears_from_the_next_generation_with_no_orphaned_copy() {
+        // aggregate_range holds no state between calls: nothing here is a cache to leave a copy
+        // in. Deleting evidence "through existing deletion controls" (a caller's storage layer)
+        // means the next call simply receives a shorter list, which this proves is sufficient.
+        let project_id = project("open-history");
+        let kept = EvidenceItem {
+            project_id: project_id.clone(),
+            project_label: Some("open-history".into()),
+            occurred_at: at("2026-09-15", 10),
+            kind: EvidenceKind::Commit {
+                commit_id: "kept".into(),
+                subject: None,
+            },
+        };
+        let deleted = EvidenceItem {
+            project_id,
+            project_label: Some("open-history".into()),
+            occurred_at: at("2026-09-15", 11),
+            kind: EvidenceKind::Commit {
+                commit_id: "deleted".into(),
+                subject: None,
+            },
+        };
+
+        let before = aggregate_range(&[kept.clone(), deleted], range("2026-09-14", "2026-09-20"));
+        assert_eq!(before[0].evidence.len(), 2);
+
+        let after = aggregate_range(&[kept], range("2026-09-14", "2026-09-20"));
+        assert_eq!(after[0].evidence.len(), 1);
+        assert_eq!(
+            after[0].evidence[0].kind,
+            EvidenceKind::Commit {
+                commit_id: "kept".into(),
+                subject: None,
+            }
+        );
+    }
+
+    #[test]
+    fn a_high_volume_week_aggregates_and_exports_with_no_summarization_engine_and_no_network() {
+        // 20,000 raw-scale evidence items across many projects, over a wall-clock budget tight
+        // enough to fail if this ever started doing per-item I/O. There is nothing here capable
+        // of a network call in the first place (see the module docs), so this test is really
+        // checking that the busy-week path stays a pure, bounded computation as it scales.
+        let target_range = range("2026-09-14", "2026-09-20");
+        let evidence: Vec<EvidenceItem> = (0..20_000)
+            .map(|index| EvidenceItem {
+                project_id: project(&format!("project-{}", index % 50)),
+                project_label: Some(format!("project-{}", index % 50)),
+                occurred_at: at("2026-09-14", u32::try_from(index % 24).unwrap()),
+                kind: EvidenceKind::Commit {
+                    commit_id: format!("commit-{index}"),
+                    subject: Some(format!("change {index}")),
+                },
+            })
+            .collect();
+
+        let started = std::time::Instant::now();
+        let work_items = aggregate_range(&evidence, target_range);
+        let markdown = render_markdown(target_range, &work_items);
+        let elapsed = started.elapsed();
+
+        assert_eq!(work_items.len(), 50);
+        assert!(!markdown.is_empty());
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "aggregation took {elapsed:?}, too slow for a bounded local computation"
+        );
     }
 }

@@ -2706,6 +2706,7 @@ dependencies = [
  "openhistory-digest",
  "openhistory-domain",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

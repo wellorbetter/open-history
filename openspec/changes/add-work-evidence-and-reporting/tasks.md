@@ -10,16 +10,16 @@
 ## 2. Repository Evidence
 
 - [ ] 2.1 Implement per-repository opt-in storage, suggestion of observed-but-unadded repositories, and removal that stops collection; verify an unadded repository referenced by window activity produces no evidence and that removal deletes prior evidence.
-- [ ] 2.2 Implement metadata-only repository reading for commits, branch, and changed-path statistics; verify no working-tree content, diff hunk, staged content, or remote credential is read, and that a repository with uncommitted secrets yields none of them.
-- [ ] 2.3 Emit canonical repository events with independent source identity through the existing bounded channel; verify evidence is attributed separately from platform capture and that elapsed time is counted once when both cover the same period.
-- [ ] 2.4 Apply path-pattern exclusion to changed paths before persistence; verify excluded paths never reach storage, search index, or diagnostics while the commit retains a reduced-coverage indicator.
+- [x] 2.2 Implement metadata-only repository reading for commits, branch, and changed-path statistics; verify no working-tree content, diff hunk, staged content, or remote credential is read, and that a repository with uncommitted secrets yields none of them.
+- [x] 2.3 Emit canonical repository events with independent source identity through the existing bounded channel; verify evidence is attributed separately from platform capture and that elapsed time is counted once when both cover the same period.
+- [x] 2.4 Apply path-pattern exclusion to changed paths before persistence; verify excluded paths never reach storage, search index, or diagnostics while the commit retains a reduced-coverage indicator. (`apply_path_exclusions` uses substring matching, not glob patterns; revisit if a pattern language is needed.)
 - [ ] 2.5 Implement incremental reads anchored to the last observed commit per repository; verify force-push, rebase, branch switch, shallow clone, and detached-head fixtures produce no duplicate or fabricated evidence.
 
 ## 3. Agent Session Evidence
 
-- [ ] 3.1 Port the Codex rollout JSONL and SQLite state parsers into a dedicated crate behind a catalog/derive port with incremental position tracking; verify derived intent, latest request, result, and state match golden fixtures captured from known upstream versions.
-- [ ] 3.2 Implement upstream version declaration, unrecognized-layout detection, and per-record skip; verify an unrecognized store emits no events with a degraded status while other sources continue, and that one malformed record does not discard its siblings.
-- [ ] 3.3 Implement append-only incremental derivation and truncation/rewrite recovery; verify a growing session parses only appended content and a rewritten record re-derives without duplicating represented activity.
+- [ ] 3.1 Port the Codex rollout JSONL and SQLite state parsers into a dedicated crate behind a catalog/derive port with incremental position tracking; verify derived intent, latest request, result, and state match golden fixtures captured from known upstream versions. (Deviation: `openhistory-agent-sessions` is a new implementation covering the JSONL rollout format's two known dialects, not a port of `cxs`; SQLite session state is not read. Revisit before relying on this for anything beyond the JSONL path.)
+- [x] 3.2 Implement upstream version declaration, unrecognized-layout detection, and per-record skip; verify an unrecognized store emits no events with a degraded status while other sources continue, and that one malformed record does not discard its siblings. (Per-record and per-line recognition is implemented; a store-level degraded status surfaced to the source-visibility UI is not — there is no UI yet.)
+- [x] 3.3 Implement append-only incremental derivation and truncation/rewrite recovery; verify a growing session parses only appended content and a rewritten record re-derives without duplicating represented activity.
 - [ ] 3.4 Implement credential redaction over session text before persistence; verify automated secret scanning of the database and diagnostics finds no token, key, or authorization header from redaction fixtures.
 - [ ] 3.5 Emit canonical agent-session events and correlate them to project entities; verify a session with no corresponding window activity is still represented and marked as having no observed attention data.
 
@@ -32,7 +32,7 @@
 
 ## 5. Range Digest
 
-- [ ] 5.1 Implement range aggregation of segments into project-level work items with deterministic titles, attention duration, contributing entities, artifact counts, and active days; verify repeated aggregation of an unchanged range is byte-equivalent including ordering.
+- [x] 5.1 Implement range aggregation of segments into project-level work items with deterministic titles, attention duration, contributing entities, artifact counts, and active days; verify repeated aggregation of an unchanged range is byte-equivalent including ordering. (`openhistory-digest` aggregates a flat `EvidenceItem` list, not `TaskSegment` directly, since segmentation is not yet entity-aware — see task 1.4.)
 - [ ] 5.2 Implement evidence linking from work items to segments, commits, sessions, and meetings; verify every work item resolves to openable evidence and that deleted evidence disappears from the next generation without leaving an orphaned copy.
 - [ ] 5.3 Implement confidence thresholding for work-item attribution; verify entities below the threshold are excluded from attribution while remaining visible in the day timeline.
 - [ ] 5.4 Implement gap representation for excluded, expired, and uncollected periods; verify gaps are never reconstructed, estimated, or silently closed.

@@ -242,6 +242,47 @@ pub enum SemanticPayload {
     },
     /// Inactivity or process lifecycle boundary.
     Lifecycle(LifecycleBoundary),
+    /// Git commit observed in an opted-in repository. Metadata and path statistics only.
+    RepositoryCommit {
+        /// Repository root the commit was read from.
+        repository_path: String,
+        /// Commit identifier.
+        commit_id: String,
+        /// Branch name when the repository has one checked out.
+        branch: Option<String>,
+        /// Commit subject line.
+        subject: Option<String>,
+        /// Paths changed by the commit, after exclusion filtering.
+        changed_paths: Vec<String>,
+    },
+    /// Incremental update derived from a local AI coding-agent session record.
+    AgentSessionUpdate {
+        /// Stable identifier for the session, issued by the agent.
+        thread_id: String,
+        /// First user request in the session, when observed.
+        intent: Option<String>,
+        /// Most recent user request, when observed.
+        latest_request: Option<String>,
+        /// Most recent agent-authored result, when observed.
+        result: Option<String>,
+        /// Current turn state.
+        state: AgentSessionState,
+    },
+}
+
+/// State of the latest observable turn in an agent session, not completion of the user's task.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSessionState {
+    /// State could not be determined from the record.
+    #[default]
+    Unknown,
+    /// A turn is in progress.
+    Active,
+    /// The latest turn finished and no new turn has started.
+    Idle,
+    /// The session ended without a completed turn.
+    Aborted,
 }
 
 /// Stable sort key that survives equal wall-clock timestamps and clock rollback.
@@ -308,6 +349,20 @@ mod tests {
                 private_context: false,
             },
             SemanticPayload::Lifecycle(LifecycleBoundary::Idle),
+            SemanticPayload::RepositoryCommit {
+                repository_path: "/Users/dev/open-history".into(),
+                commit_id: "abc123".into(),
+                branch: Some("main".into()),
+                subject: Some("feat: add consent-gated capture".into()),
+                changed_paths: vec!["crates/openhistory-platform/src/macos.rs".into()],
+            },
+            SemanticPayload::AgentSessionUpdate {
+                thread_id: "01JD3K7M4QWERTY".into(),
+                intent: Some("Add work evidence capture".into()),
+                latest_request: Some("Run the check suite".into()),
+                result: Some("All checks passed".into()),
+                state: AgentSessionState::Idle,
+            },
         ];
 
         for (index, payload) in payloads.into_iter().enumerate() {

@@ -2686,11 +2686,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "openhistory-agent-sessions"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "openhistory-domain",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "openhistory-api"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
+]
+
+[[package]]
+name = "openhistory-demo"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "openhistory-agent-sessions",
+ "openhistory-digest",
+ "openhistory-domain",
+ "openhistory-entities",
+ "openhistory-repository",
+ "tempfile",
 ]
 
 [[package]]
@@ -2710,6 +2735,15 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tokio",
+]
+
+[[package]]
+name = "openhistory-digest"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "openhistory-domain",
+ "serde",
 ]
 
 [[package]]
@@ -2760,6 +2794,16 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "url",
+]
+
+[[package]]
+name = "openhistory-repository"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "openhistory-domain",
+ "tempfile",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

@@ -1,9 +1,9 @@
 ## 1. Entity Resolution Foundation
 
-- [ ] 1.1 Define the typed entity model for project, file, host, meeting, and agent-thread entities with stable identifiers, confidence, and provenance; verify identical input resolves to byte-equivalent entities across runs and process restarts.
-- [ ] 1.2 Implement deterministic resolution rules for editor, terminal, browser, and document window metadata; verify a fixture matrix of representative applications resolves expected entities and that unmatched titles are marked unresolved rather than guessed.
-- [ ] 1.3 Implement identifier derivation from durable properties (repository path, document path, canonical host, calendar entry identifier); verify a changed window-title format and a changed display name both resolve to the unchanged identifier.
-- [ ] 1.4 Place resolution after privacy evaluation and before segmentation in the pipeline; verify excluded events produce no entity and that segmentation no longer compares raw title tokens to establish identity.
+- [x] 1.1 Define the typed entity model for project, file, host, meeting, and agent-thread entities with stable identifiers, confidence, and provenance; verify identical input resolves to byte-equivalent entities across runs and process restarts.
+- [x] 1.2 Implement deterministic resolution rules for editor, terminal, browser, and document window metadata; verify a fixture matrix of representative applications resolves expected entities and that unmatched titles are marked unresolved rather than guessed.
+- [x] 1.3 Implement identifier derivation from durable properties (repository path, document path, canonical host, calendar entry identifier); verify a changed window-title format and a changed display name both resolve to the unchanged identifier.
+- [ ] 1.4 Run resolution at the capture boundary immediately after privacy evaluation, emitting entity identifiers on the event while the raw document path is discarded before persistence; verify excluded events produce no entity, that no raw path reaches storage, and that segmentation no longer compares raw title tokens to establish identity.
 - [ ] 1.5 Rewire continuity scoring to consume entity identity with a title-token fallback for unresolved events; verify existing segmentation fixtures still produce byte-equivalent projections and that two files in one project now score as continuous.
 - [ ] 1.6 Implement backfill of entities for previously stored events on first run; verify backfill is resumable, bounded in batch size, and leaves segments usable while it is incomplete.
 

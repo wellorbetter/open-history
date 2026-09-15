@@ -2716,10 +2716,19 @@ dependencies = [
 name = "openhistory-domain"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "chrono",
  "serde",
  "serde_json",
  "uuid",
+]
+
+[[package]]
+name = "openhistory-entities"
+version = "0.1.0"
+dependencies = [
+ "openhistory-domain",
+ "url",
 ]
 
 [[package]]

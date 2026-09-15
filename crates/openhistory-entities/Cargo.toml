@@ -1,0 +1,12 @@
+[package]
+name = "openhistory-entities"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+openhistory-domain = { path = "../openhistory-domain" }
+url.workspace = true
+
+[lints]
+workspace = true

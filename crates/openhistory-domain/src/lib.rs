@@ -6,6 +6,10 @@ use chrono::{DateTime, FixedOffset, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub mod entity;
+
+pub use entity::{Entity, EntityConfidence, EntityId, EntityKey, EntityKind, EntityProvenance};
+
 /// Schema version emitted by this implementation.
 pub const EVENT_SCHEMA_VERSION: u16 = 1;
 
@@ -121,7 +125,7 @@ pub struct SourceIdentity {
 }
 
 /// Known event adapter families.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdapterKind {
     /// macOS Accessibility and workspace notifications.

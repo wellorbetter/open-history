@@ -120,6 +120,33 @@ Alternatives considered:
 - **Use a local model for entity extraction:** tolerates unusual formats, but makes identity
   non-deterministic, which breaks byte-equivalent replay of segment projections.
 
+### 4a. Resolve entities at the capture boundary, not downstream of storage
+
+Resolution runs inside the platform adapter, immediately after the privacy evaluator and before the
+event is constructed. The adapter emits entity identifiers on the event and discards the raw
+document path; no raw path is persisted.
+
+The macOS collector already one-way hashes the document path before it leaves the capture boundary
+(`openhistory-platform`, `document_fingerprint`), so a downstream resolver would receive a hash of a
+*file* path and could never match it to the *repository root* that a Git commit or agent session
+reports. The one-way hash is not a specified requirement, but it is a property worth keeping: raw
+paths never reaching storage is stronger than redacting them later. Resolving before the discard
+keeps that property and makes cross-source correlation possible, because every source derives its
+project identifier from the same repository root string.
+
+The ordering invariant is unchanged — privacy still runs first — but the resolver must be able to
+read the opted-in repository roots, so that a document path is matched against them by longest
+prefix rather than by walking the filesystem on the capture path. A document outside every opted-in
+repository yields a file entity and no project entity, which is also what repository opt-in requires.
+
+Alternatives considered:
+
+- **Let the raw document path through to a pipeline stage:** matches the simplest pipeline shape and
+  is the least code, but keeps raw paths alive past the boundary that currently destroys them, and
+  weakens a property the product advertises.
+- **Keep the existing document fingerprint as project identity:** no changes to capture, but every
+  file in a project becomes its own "project", and no artifact source can ever correlate with it.
+
 ### 5. Keep narrative summarization local-only; delegate to the user's agent rather than adding a remote client
 
 Narrative summaries are produced by the on-device engine, or by the user's own agent reading digests

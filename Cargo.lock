@@ -2722,9 +2722,11 @@ dependencies = [
 name = "openhistory-desktop"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "openhistory-adapters",
  "openhistory-api",
  "openhistory-domain",
+ "openhistory-entities",
  "openhistory-platform",
  "openhistory-privacy",
  "openhistory-segmentation",

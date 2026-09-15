@@ -6,6 +6,7 @@ use std::{
 };
 
 use openhistory_adapters::{ActivityAdapter, AdapterError, bounded_event_channel};
+use openhistory_entities::ProjectRegistry;
 use openhistory_platform::{
     CaptureDetail, CollectionGate, PlatformAdapter, platform_permission_granted,
 };
@@ -45,12 +46,69 @@ impl CollectorRuntime {
             ],
             ..PrivacyPolicy::default()
         });
+        adapter.set_project_registry(
+            ProjectRegistry::new(database.opted_in_repositories()),
+            std::env::var("HOME").ok(),
+        );
         Ok(Self {
             adapter: AsyncMutex::new(adapter),
             database: Arc::new(Mutex::new(database)),
             writer: AsyncMutex::new(None),
             dashboard,
         })
+    }
+
+    /// Opts a repository into Git evidence collection and Accessibility project resolution.
+    ///
+    /// Takes effect for accessibility resolution the next time collection starts; already-running
+    /// collection keeps its previous registry, matching how a privacy-policy change is applied.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage error if the opt-in cannot be persisted.
+    pub async fn add_repository(&self, root_path: &str) -> Result<(), StorageError> {
+        let now = chrono::Local::now().fixed_offset();
+        {
+            let mut database = self.database.lock().map_err(|_| StorageError::Database)?;
+            database.add_repository(root_path, now)?;
+        }
+        self.refresh_project_registry().await;
+        Ok(())
+    }
+
+    /// Withdraws a repository from Git evidence collection and project resolution.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage error if the removal cannot be persisted.
+    pub async fn remove_repository(&self, root_path: &str) -> Result<(), StorageError> {
+        {
+            let mut database = self.database.lock().map_err(|_| StorageError::Database)?;
+            database.remove_repository(root_path)?;
+        }
+        self.refresh_project_registry().await;
+        Ok(())
+    }
+
+    /// Returns every opted-in repository root.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage error if the encrypted database cannot be read.
+    pub fn opted_in_repositories(&self) -> Result<Vec<String>, StorageError> {
+        let database = self.database.lock().map_err(|_| StorageError::Database)?;
+        Ok(database.opted_in_repositories())
+    }
+
+    async fn refresh_project_registry(&self) {
+        let roots = self
+            .database
+            .lock()
+            .map_or_else(|_| Vec::new(), |database| database.opted_in_repositories());
+        self.adapter
+            .lock()
+            .await
+            .set_project_registry(ProjectRegistry::new(roots), std::env::var("HOME").ok());
     }
 
     /// Starts collection only as a direct result of the user's recording action.

@@ -9,7 +9,7 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-use openhistory_domain::{EventEnvelope, normalize_event_order};
+use openhistory_domain::{EntityKey, EventEnvelope, normalize_event_order};
 use openhistory_segmentation::TaskSegment;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS task_segments (
     started_at TEXT NOT NULL,
     ended_at TEXT NOT NULL,
     segment_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS opted_in_repositories (
+    root_path TEXT PRIMARY KEY,
+    added_at TEXT NOT NULL
 );
 INSERT OR IGNORE INTO schema_migrations(version, applied_at)
 VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
@@ -347,6 +351,49 @@ impl HistoryRepository for EncryptedDatabase {
             segments: 0,
         })
     }
+
+    fn add_repository(
+        &mut self,
+        root_path: &str,
+        added_at: DateTime<FixedOffset>,
+    ) -> Result<(), StorageError> {
+        let Some(normalized) = normalized_repository_root(root_path) else {
+            return Ok(());
+        };
+        self.connection
+            .execute(
+                "INSERT OR IGNORE INTO opted_in_repositories(root_path, added_at) VALUES (?1, ?2)",
+                (normalized, added_at.with_timezone(&Utc).to_rfc3339()),
+            )
+            .map_err(|_| StorageError::Database)?;
+        Ok(())
+    }
+
+    fn remove_repository(&mut self, root_path: &str) -> Result<(), StorageError> {
+        let Some(normalized) = normalized_repository_root(root_path) else {
+            return Ok(());
+        };
+        self.connection
+            .execute(
+                "DELETE FROM opted_in_repositories WHERE root_path = ?1",
+                [normalized],
+            )
+            .map_err(|_| StorageError::Database)?;
+        Ok(())
+    }
+
+    fn opted_in_repositories(&self) -> Vec<String> {
+        let Ok(mut statement) = self
+            .connection
+            .prepare("SELECT root_path FROM opted_in_repositories ORDER BY root_path")
+        else {
+            return Vec::new();
+        };
+        let Ok(rows) = statement.query_map([], |row| row.get::<_, String>(0)) else {
+            return Vec::new();
+        };
+        rows.filter_map(Result::ok).collect()
+    }
 }
 /// Supported raw-event retention settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -398,6 +445,37 @@ pub trait HistoryRepository {
         now: DateTime<FixedOffset>,
         policy: RetentionPolicy,
     ) -> Result<DeletionReport, StorageError>;
+
+    /// Opts a repository root into Git evidence collection.
+    ///
+    /// A path that carries no identity (blank, or the filesystem root) is silently ignored,
+    /// matching the resolver's own normalization: there is no repository to observe.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when the write cannot complete.
+    fn add_repository(
+        &mut self,
+        root_path: &str,
+        added_at: DateTime<FixedOffset>,
+    ) -> Result<(), StorageError>;
+
+    /// Withdraws a previously opted-in repository. Removing a root that was never added is not an
+    /// error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when the write cannot complete.
+    fn remove_repository(&mut self, root_path: &str) -> Result<(), StorageError>;
+
+    /// Returns every opted-in repository root, normalized and in a stable order.
+    fn opted_in_repositories(&self) -> Vec<String>;
+}
+
+/// Normalizes a repository root using the same rule the entity resolver's project registry
+/// applies, so a path stored here and a path checked there always agree on identity.
+fn normalized_repository_root(root_path: &str) -> Option<String> {
+    EntityKey::repository_path(root_path).map(|key| key.value().to_owned())
 }
 
 /// In-memory backend for synthetic journeys. It is never used as a production fallback.
@@ -405,6 +483,7 @@ pub trait HistoryRepository {
 pub struct MemoryHistoryRepository {
     events: BTreeMap<String, EventEnvelope>,
     segments: BTreeMap<String, TaskSegment>,
+    repositories: std::collections::BTreeSet<String>,
 }
 
 impl HistoryRepository for MemoryHistoryRepository {
@@ -437,6 +516,28 @@ impl HistoryRepository for MemoryHistoryRepository {
             raw_events: before - self.events.len(),
             segments: 0,
         })
+    }
+
+    fn add_repository(
+        &mut self,
+        root_path: &str,
+        _added_at: DateTime<FixedOffset>,
+    ) -> Result<(), StorageError> {
+        if let Some(normalized) = normalized_repository_root(root_path) {
+            self.repositories.insert(normalized);
+        }
+        Ok(())
+    }
+
+    fn remove_repository(&mut self, root_path: &str) -> Result<(), StorageError> {
+        if let Some(normalized) = normalized_repository_root(root_path) {
+            self.repositories.remove(&normalized);
+        }
+        Ok(())
+    }
+
+    fn opted_in_repositories(&self) -> Vec<String> {
+        self.repositories.iter().cloned().collect()
     }
 }
 
@@ -578,5 +679,79 @@ mod tests {
             Err(StorageError::InvalidKey)
         ));
         assert!(DatabaseKey::parse(&"ab".repeat(DATABASE_KEY_BYTES)).is_ok());
+    }
+
+    fn added_at() -> DateTime<FixedOffset> {
+        DateTime::parse_from_rfc3339("2026-09-15T09:00:00+08:00").unwrap()
+    }
+
+    #[test]
+    fn memory_repository_opt_in_is_normalized_deduplicated_and_ordered() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .add_repository("/Users/dev/beta", added_at())
+            .unwrap();
+        repository
+            .add_repository("/Users/dev/alpha/", added_at())
+            .unwrap();
+        repository
+            .add_repository("/Users/dev/alpha", added_at())
+            .unwrap();
+
+        assert_eq!(
+            repository.opted_in_repositories(),
+            vec!["/Users/dev/alpha".to_owned(), "/Users/dev/beta".to_owned()]
+        );
+    }
+
+    #[test]
+    fn memory_repository_removal_and_blank_paths_are_handled() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .add_repository("/Users/dev/alpha", added_at())
+            .unwrap();
+        repository.add_repository("   ", added_at()).unwrap();
+        assert_eq!(repository.opted_in_repositories().len(), 1);
+
+        repository.remove_repository("/Users/dev/alpha").unwrap();
+        assert!(repository.opted_in_repositories().is_empty());
+        // Removing something never added, or a blank path, is not an error.
+        repository.remove_repository("/never/added").unwrap();
+        repository.remove_repository("").unwrap();
+    }
+
+    #[test]
+    fn encrypted_repository_persists_opted_in_repositories_across_reopen() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("history.sqlite3");
+        let key = DatabaseKey::generate();
+
+        {
+            let mut database = EncryptedDatabase::open(&path, &key).unwrap();
+            database
+                .add_repository("/Users/dev/open-history/", added_at())
+                .unwrap();
+            database
+                .add_repository("/Users/dev/open-history", added_at())
+                .unwrap();
+            database
+                .add_repository("/Users/dev/timetrace", added_at())
+                .unwrap();
+        }
+
+        let mut reopened = EncryptedDatabase::open(&path, &key).unwrap();
+        assert_eq!(
+            reopened.opted_in_repositories(),
+            vec![
+                "/Users/dev/open-history".to_owned(),
+                "/Users/dev/timetrace".to_owned()
+            ]
+        );
+
+        reopened.remove_repository("/Users/dev/timetrace").unwrap();
+        assert_eq!(
+            reopened.opted_in_repositories(),
+            vec!["/Users/dev/open-history".to_owned()]
+        );
     }
 }

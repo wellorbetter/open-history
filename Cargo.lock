@@ -2691,6 +2691,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "openhistory-domain",
+ "openhistory-entities",
  "serde",
  "serde_json",
  "tempfile",

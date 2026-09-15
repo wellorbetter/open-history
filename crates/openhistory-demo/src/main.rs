@@ -26,7 +26,7 @@ fn main() {
     let session_path = write_session_log(workspace.path());
     let project = resolve_project_entity(&repo_root, workspace.path());
     let commit_events = read_repository_evidence(&repo_root);
-    let (evidence, session_evt) = derive_session_evidence(&session_path);
+    let (evidence, session_evt) = derive_session_evidence(&session_path, &repo_root);
     let items = build_evidence(&project, &commit_events, &session_evt, &evidence);
     render_and_report(&items);
 }
@@ -130,6 +130,7 @@ fn read_repository_evidence(repo_root: &std::path::Path) -> Vec<openhistory_doma
 
 fn derive_session_evidence(
     session_path: &std::path::Path,
+    repo_root: &std::path::Path,
 ) -> (
     openhistory_agent_sessions::DerivedEvidence,
     openhistory_domain::EventEnvelope,
@@ -145,7 +146,21 @@ fn derive_session_evidence(
         evidence.state,
         evidence.diagnostics
     );
-    let session_evt = session_event("01JD3K7M4QWERTY", &evidence, "codex:01JD3K7M4QWERTY", 0);
+    // The session's working directory (here, the fixture repo it ran in) is what correlates it to
+    // a project entity, the same opted-in-repository rule window activity resolution follows.
+    let registry = ProjectRegistry::new([repo_root.to_string_lossy().into_owned()]);
+    let project_id = openhistory_agent_sessions::resolve_session_project(
+        &registry,
+        Some(&repo_root.to_string_lossy()),
+    );
+    println!("  session working directory resolved project id={project_id:?}");
+    let session_evt = session_event(
+        "01JD3K7M4QWERTY",
+        &evidence,
+        "codex:01JD3K7M4QWERTY",
+        0,
+        project_id,
+    );
     (evidence, session_evt)
 }
 

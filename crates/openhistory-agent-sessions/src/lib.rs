@@ -14,9 +14,10 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 
 use chrono::{DateTime, Utc};
 use openhistory_domain::{
-    AdapterKind, AgentSessionState, ApplicationIdentity, CaptureQuality, EventEnvelope,
-    SemanticPayload, SourceIdentity,
+    AdapterKind, AgentSessionState, ApplicationIdentity, CaptureQuality, EntityId, EntityKey,
+    EventEnvelope, SemanticPayload, SourceIdentity,
 };
+use openhistory_entities::ProjectRegistry;
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -121,6 +122,113 @@ pub fn derive<R: Read + Seek>(
     Ok(evidence)
 }
 
+/// Minimum length a bare token must reach before it is treated as credential-shaped on its own,
+/// without a `key=`/`key:` prefix or a `Bearer ` marker to go on.
+const MIN_BARE_TOKEN_LENGTH: usize = 24;
+
+/// Replaces text that looks like a credential with `[REDACTED]` before it can be persisted.
+///
+/// Three independent patterns are covered, each redacting only the credential-shaped portion so
+/// the surrounding request or result text stays readable: a `Bearer <token>` marker, a
+/// `key=value`/`key: value` pair whose key names a credential, and a bare long token that mixes
+/// letters and digits (an API key pasted with no label at all). This is deliberately conservative
+/// about the bare-token case — favoring a false negative over redacting an ordinary long word —
+/// because the surrounding request text is exactly what a status report needs to stay readable.
+#[must_use]
+fn redact_credentials(text: &str) -> String {
+    let with_bearer_redacted = redact_bearer_tokens(text);
+    let with_pairs_redacted = redact_key_value_pairs(&with_bearer_redacted);
+    redact_bare_tokens(&with_pairs_redacted)
+}
+
+fn redact_bearer_tokens(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut words = text.split(' ').peekable();
+    while let Some(word) = words.next() {
+        if word.eq_ignore_ascii_case("bearer")
+            && let Some(&next) = words.peek()
+            && !next.is_empty()
+        {
+            result.push_str(word);
+            result.push_str(" [REDACTED]");
+            words.next();
+        } else {
+            result.push_str(word);
+        }
+        if words.peek().is_some() {
+            result.push(' ');
+        }
+    }
+    result
+}
+
+/// Key names that mark the value beside them as a credential, checked case-insensitively.
+const CREDENTIAL_KEY_MARKERS: [&str; 5] = ["api_key", "apikey", "token", "secret", "password"];
+
+fn redact_key_value_pairs(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut words = text.split(' ').peekable();
+    while let Some(word) = words.next() {
+        let separator = word.find(['=', ':']);
+        if let Some(index) = separator {
+            let (key, rest) = word.split_at(index);
+            let value = &rest[1..];
+            let lowered_key = key.to_ascii_lowercase();
+            if !value.is_empty()
+                && CREDENTIAL_KEY_MARKERS
+                    .iter()
+                    .any(|marker| lowered_key.contains(marker))
+            {
+                result.push_str(key);
+                result.push(rest.as_bytes()[0] as char);
+                result.push_str("[REDACTED]");
+                if words.peek().is_some() {
+                    result.push(' ');
+                }
+                continue;
+            }
+        }
+        result.push_str(word);
+        if words.peek().is_some() {
+            result.push(' ');
+        }
+    }
+    result
+}
+
+fn redact_bare_tokens(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut words = text.split(' ').peekable();
+    while let Some(word) = words.next() {
+        if looks_like_bare_credential(word) {
+            result.push_str("[REDACTED]");
+        } else {
+            result.push_str(word);
+        }
+        if words.peek().is_some() {
+            result.push(' ');
+        }
+    }
+    result
+}
+
+/// A bare token reads as a credential when it is long, made only of identifier-safe characters,
+/// and mixes letters with digits — prose and file paths rarely do all three at once.
+fn looks_like_bare_credential(word: &str) -> bool {
+    let trimmed = word.trim_matches(|character: char| character.is_ascii_punctuation());
+    if trimmed.chars().count() < MIN_BARE_TOKEN_LENGTH {
+        return false;
+    }
+    let identifier_safe = trimmed
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_');
+    let has_letter = trimmed
+        .chars()
+        .any(|character| character.is_ascii_alphabetic());
+    let has_digit = trimmed.chars().any(|character| character.is_ascii_digit());
+    identifier_safe && has_letter && has_digit
+}
+
 fn fold_line(evidence: &mut DerivedEvidence, line: &str, line_number: usize) {
     let Ok(record) = serde_json::from_str::<Record>(line) else {
         evidence
@@ -134,6 +242,7 @@ fn fold_line(evidence: &mut DerivedEvidence, line: &str, line_number: usize) {
             evidence.updated_at = Some(record.timestamp);
             match update {
                 RecordUpdate::UserMessage(text) => {
+                    let text = redact_credentials(&text);
                     if evidence.intent.is_none() {
                         evidence.intent = Some(text.clone());
                     }
@@ -143,7 +252,7 @@ fn fold_line(evidence: &mut DerivedEvidence, line: &str, line_number: usize) {
                 RecordUpdate::TaskCompleted(result) => {
                     evidence.state = AgentSessionState::Idle;
                     if let Some(result) = result {
-                        evidence.result = Some(result);
+                        evidence.result = Some(redact_credentials(&result));
                     }
                 }
                 RecordUpdate::TurnAborted => evidence.state = AgentSessionState::Aborted,
@@ -311,13 +420,33 @@ fn joined_text(content: &[TextContent]) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
+/// Resolves a session's working directory against opted-in repositories.
+///
+/// Returns `None` when there is no working directory to go on, or when it falls outside every
+/// opted-in repository — a session in an unregistered directory correlates to no project, the
+/// same rule window-activity resolution follows, rather than guessing from the path alone.
+#[must_use]
+pub fn resolve_session_project(
+    registry: &ProjectRegistry,
+    working_directory: Option<&str>,
+) -> Option<String> {
+    let root = registry.containing(working_directory?)?;
+    let key = EntityKey::repository_path(root)?;
+    Some(EntityId::derive(&key).to_string())
+}
+
 /// Builds a canonical event from derived evidence.
+///
+/// `project_id` is resolved by the caller (typically via [`resolve_session_project`]) rather than
+/// computed here, so this function stays a pure mapping from already-derived evidence to an event
+/// and never needs to know how a working directory was obtained.
 #[must_use]
 pub fn session_event(
     thread_id: &str,
     evidence: &DerivedEvidence,
     source_id: &str,
     monotonic_ticks: u64,
+    project_id: Option<String>,
 ) -> EventEnvelope {
     let occurred_at = evidence.updated_at.unwrap_or_else(Utc::now).fixed_offset();
     EventEnvelope::new(
@@ -339,6 +468,7 @@ pub fn session_event(
             latest_request: evidence.latest_request.clone(),
             result: evidence.result.clone(),
             state: evidence.state,
+            project_id,
         },
     )
 }
@@ -557,7 +687,13 @@ mod tests {
         let evidence =
             derive(lines(&[TASK_STARTED_1, USER_TURN_1, TASK_COMPLETE_1]), None).unwrap();
 
-        let event = session_event("thread-1", &evidence, "codex:thread-1", 0);
+        let event = session_event(
+            "thread-1",
+            &evidence,
+            "codex:thread-1",
+            0,
+            Some("project-id".into()),
+        );
 
         match event.payload {
             SemanticPayload::AgentSessionUpdate {
@@ -565,14 +701,132 @@ mod tests {
                 intent,
                 result,
                 state,
+                project_id,
                 ..
             } => {
                 assert_eq!(thread_id, "thread-1");
                 assert_eq!(intent.as_deref(), Some("add a session list"));
                 assert_eq!(result.as_deref(), Some("finished the read-only list."));
                 assert_eq!(state, AgentSessionState::Idle);
+                assert_eq!(project_id.as_deref(), Some("project-id"));
             }
             other => panic!("expected AgentSessionUpdate, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn bearer_tokens_are_redacted() {
+        let redacted = redact_credentials("Authorization: Bearer sk-abcdef1234567890 please retry");
+        assert!(!redacted.contains("sk-abcdef1234567890"));
+        assert!(redacted.contains("Bearer [REDACTED]"));
+        assert!(redacted.contains("please retry"));
+    }
+
+    #[test]
+    fn key_value_credentials_are_redacted_but_the_key_name_stays_readable() {
+        for pair in [
+            "api_key=sk-liveabcdef1234567890",
+            "token: ghp_abcdef1234567890xyz9",
+        ] {
+            let redacted = redact_credentials(pair);
+            assert!(
+                redacted.contains("[REDACTED]"),
+                "expected redaction in {redacted}"
+            );
+            assert!(
+                !redacted.contains("abcdef1234567890"),
+                "leaked in {redacted}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bare_long_alphanumeric_token_is_redacted() {
+        let redacted = redact_credentials("here is the key AKIAABCDEFGHIJKLMNOP1234 for prod");
+        assert!(!redacted.contains("AKIAABCDEFGHIJKLMNOP1234"));
+        assert!(redacted.contains("[REDACTED]"));
+        assert!(redacted.contains("here is the key"));
+        assert!(redacted.contains("for prod"));
+    }
+
+    #[test]
+    fn ordinary_request_text_is_never_touched() {
+        let text =
+            "Add a range digest that aggregates evidence into work items for the weekly report";
+        assert_eq!(redact_credentials(text), text);
+    }
+
+    #[test]
+    fn a_long_file_path_is_not_mistaken_for_a_credential() {
+        // All-lowercase, no digits: fails the "mixes letters and digits" heuristic on purpose.
+        let text = "wrote to crates/openhistory-agent-sessions/src/lib.rs successfully";
+        assert_eq!(redact_credentials(text), text);
+    }
+
+    #[test]
+    fn credentials_in_the_latest_request_and_result_are_redacted_before_being_stored() {
+        let source = lines(&[
+            r#"{"timestamp":"2030-01-01T00:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}"#,
+            r#"{"timestamp":"2030-01-01T00:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"use token=ghp_abcdef1234567890xyz to deploy"}]}}"#,
+            r#"{"timestamp":"2030-01-01T00:00:02Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","last_agent_message":"deployed using Bearer sk-abcdef1234567890"}}"#,
+        ]);
+
+        let evidence = derive(source, None).unwrap();
+
+        assert!(
+            !evidence
+                .latest_request
+                .as_ref()
+                .unwrap()
+                .contains("ghp_abcdef1234567890xyz")
+        );
+        assert!(
+            !evidence
+                .result
+                .as_ref()
+                .unwrap()
+                .contains("sk-abcdef1234567890")
+        );
+    }
+
+    #[test]
+    fn a_session_in_an_opted_in_repository_resolves_that_project() {
+        let registry = ProjectRegistry::new(["/work/open-history"]);
+        let resolved =
+            resolve_session_project(&registry, Some("/work/open-history/crates/foo")).unwrap();
+        let expected = EntityId::derive(&EntityKey::repository_path("/work/open-history").unwrap());
+        assert_eq!(resolved, expected.to_string());
+    }
+
+    #[test]
+    fn a_session_outside_every_opted_in_repository_resolves_no_project() {
+        let registry = ProjectRegistry::new(["/work/open-history"]);
+        assert_eq!(
+            resolve_session_project(&registry, Some("/work/unregistered")),
+            None
+        );
+        assert_eq!(resolve_session_project(&registry, None), None);
+    }
+
+    #[test]
+    fn a_session_with_no_corresponding_window_activity_is_still_represented() {
+        // The session itself never observes window activity; it only derives from its own
+        // records. Its canonical event still carries full evidence and a resolved project when
+        // the working directory matches an opted-in repository, with no attention data implied.
+        let registry = ProjectRegistry::new(["/work/open-history"]);
+        let evidence =
+            derive(lines(&[TASK_STARTED_1, USER_TURN_1, TASK_COMPLETE_1]), None).unwrap();
+        let project_id = resolve_session_project(&registry, Some("/work/open-history"));
+
+        let event = session_event("thread-1", &evidence, "codex:thread-1", 0, project_id);
+
+        let SemanticPayload::AgentSessionUpdate {
+            result, project_id, ..
+        } = event.payload
+        else {
+            panic!("expected AgentSessionUpdate");
+        };
+        assert_eq!(result.as_deref(), Some("finished the read-only list."));
+        assert!(project_id.is_some());
     }
 }

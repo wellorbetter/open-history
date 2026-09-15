@@ -267,6 +267,9 @@ pub enum SemanticPayload {
         result: Option<String>,
         /// Current turn state.
         state: AgentSessionState,
+        /// Project entity this session correlates to, when its working directory matched an
+        /// opted-in repository. `None` when unresolved, never a guess.
+        project_id: Option<String>,
     },
 }
 
@@ -362,6 +365,7 @@ mod tests {
                 latest_request: Some("Run the check suite".into()),
                 result: Some("All checks passed".into()),
                 state: AgentSessionState::Idle,
+                project_id: Some("open-history".into()),
             },
         ];
 

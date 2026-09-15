@@ -1,4 +1,4 @@
-import type { ActivitySegment, ActivitySource, DashboardSnapshot } from './types';
+import type { ActivitySegment, ActivitySource, DashboardSnapshot, WeekDigest } from './types';
 
 const terminal: ActivitySource = {
   id: 'terminal',
@@ -135,6 +135,104 @@ export const timelineFixture: ActivitySegment[] = [
     confidence: 'high',
     origin: 'browser',
     revisions: revision('mcp-collaboration', 'MCP collaboration', 'Defined bounded agent queries.'),
+  },
+];
+
+/**
+ * Three weeks demonstrating the states the week surface must distinguish: a week with mixed
+ * evidence (attention, commits, an agent session, and a project with artifacts but no observed
+ * attention), a week inside the retention window with nothing recorded, and a week the retention
+ * boundary has already passed.
+ */
+export const weekDigestFixtures: WeekDigest[] = [
+  {
+    rangeStart: '2026-09-14',
+    rangeEnd: '2026-09-20',
+    hasGeneratedText: false,
+    workItems: [
+      {
+        projectId: 'open-history',
+        title: 'open-history',
+        attentionMinutes: 95,
+        commitCount: 3,
+        agentSessionCount: 1,
+        meetingCount: 0,
+        activeDays: ['2026-09-14', '2026-09-15'],
+        evidence: [
+          {
+            occurredAt: '2026-09-14T09:30:00+08:00',
+            kind: { type: 'attention', minutes: 95 },
+            segmentId: 'harness-evidence',
+          },
+          {
+            occurredAt: '2026-09-14T11:20:00+08:00',
+            kind: {
+              type: 'commit',
+              commitId: 'be279e13eb48',
+              subject: 'feat(entities): add deterministic resolver',
+            },
+          },
+          {
+            occurredAt: '2026-09-15T07:32:00+08:00',
+            kind: {
+              type: 'agentSession',
+              threadId: '01JD3K7M4QWERTY',
+              summary: 'Added openhistory-digest with range aggregation and Markdown export.',
+            },
+          },
+          {
+            occurredAt: '2026-09-15T15:05:00+08:00',
+            kind: {
+              type: 'commit',
+              commitId: '2fa8284855a2',
+              subject: 'feat(digest): aggregate evidence into work items',
+            },
+          },
+        ],
+      },
+      {
+        projectId: 'timetrace',
+        title: 'timetrace',
+        attentionMinutes: 0,
+        commitCount: 0,
+        agentSessionCount: 2,
+        meetingCount: 0,
+        activeDays: ['2026-09-16'],
+        evidence: [
+          {
+            occurredAt: '2026-09-16T10:00:00+08:00',
+            kind: {
+              type: 'agentSession',
+              threadId: '01JD4Q9YKSAMPLE',
+              summary: 'Fixed idle-detection threshold on sleep/wake.',
+            },
+          },
+        ],
+      },
+      {
+        projectId: 'reading',
+        title: 'Reading: docs.rs',
+        attentionMinutes: 20,
+        commitCount: 0,
+        agentSessionCount: 0,
+        meetingCount: 0,
+        activeDays: ['2026-09-16'],
+        evidence: [
+          { occurredAt: '2026-09-16T14:00:00+08:00', kind: { type: 'attention', minutes: 20 } },
+        ],
+      },
+    ],
+  },
+  {
+    rangeStart: '2026-09-07',
+    rangeEnd: '2026-09-13',
+    hasGeneratedText: false,
+    workItems: [],
+  },
+  {
+    rangeStart: '2026-08-17',
+    rangeEnd: '2026-08-23',
+    hasGeneratedText: false,
   },
 ];
 

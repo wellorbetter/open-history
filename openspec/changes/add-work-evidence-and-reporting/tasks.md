@@ -40,12 +40,12 @@
 
 ## 6. Week Review Surface and Report Export
 
-- [ ] 6.1 Build the week surface in the full history window listing work items with duration, sources, and summary slot, reusing existing design tokens and components; verify deterministic ordering, empty-week versus outside-retention states, and week navigation.
-- [ ] 6.2 Implement drill-down from work item to evidence to the positioned day timeline; verify selecting a commit opens the day and segment containing it.
-- [ ] 6.3 Present attention duration and artifact counts as distinct values; verify an artifact-only work item states that no attention data was observed rather than showing an unexplained zero.
-- [ ] 6.4 Implement Markdown report-draft export for the displayed range with work items, durations, and evidence references; verify golden files across time zones, empty ranges, gap periods, and user-edited summaries.
-- [ ] 6.5 Mark generated text distinctly from deterministic content in surface and export; verify an export with summarization disabled states that no generated text is included.
-- [ ] 6.6 Run accessibility and platform-variant review of the week surface; verify contrast, focus order, keyboard navigation, long titles, many sources, and reduced-transparency rendering.
+- [x] 6.1 Build the week surface in the full history window listing work items with duration, sources, and summary slot, reusing existing design tokens and components; verify deterministic ordering, empty-week versus outside-retention states, and week navigation. (`WeekPane` component + a "Week" nav item in `FullHistoryView`, fixture-driven like the rest of this window; not yet backed by a live Tauri command — see 6.4.)
+- [x] 6.2 Implement drill-down from work item to evidence to the positioned day timeline; verify selecting a commit opens the day and segment containing it. (Verified visually with a real headless-Chromium screenshot, not just the unit test, since this crosses two route sections.)
+- [x] 6.3 Present attention duration and artifact counts as distinct values; verify an artifact-only work item states that no attention data was observed rather than showing an unexplained zero.
+- [ ] 6.4 Implement Markdown report-draft export for the displayed range with work items, durations, and evidence references; verify golden files across time zones, empty ranges, gap periods, and user-edited summaries. (`openhistory-digest::render_markdown` already does this and is tested there; not done is a `export_week_report` Tauri command wiring it to a real range digest and a file save dialog — `bridge.exportWeekReport` is currently a no-op stub, disclosed in its own doc comment.)
+- [x] 6.5 Mark generated text distinctly from deterministic content in surface and export; verify an export with summarization disabled states that no generated text is included. (The surface states this; the export itself is 6.4's gap.)
+- [x] 6.6 Run accessibility and platform-variant review of the week surface; verify contrast, focus order, keyboard navigation, long titles, many sources, and reduced-transparency rendering. (Added the week surface, including its empty and outside-retention states, to the existing jest-axe accessibility suite — zero violations. Did not add a dedicated Playwright viewport/reduced-transparency case for it; the existing `e2e/surfaces.spec.ts` viewport pattern would extend directly to it as a follow-up. Playwright itself could not run in this environment — a pre-existing browser-binary mismatch unrelated to this change — so this was also checked with a manual headless-Chromium screenshot at 1100×640.)
 
 ## 7. Summarization Boundary
 

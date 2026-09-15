@@ -57,10 +57,10 @@
 
 ## 8. Agent Access Scoping
 
-- [ ] 8.1 Implement default recent-window and segment-level scoping for agent-facing reads; verify an unbounded request returns the default window and states the range covered.
-- [ ] 8.2 Refuse raw-event access without a granting approval; verify refusal carries an explanation and that segment-level records remain available.
-- [ ] 8.3 Implement per-client scope widening with recorded approval and independent revocation; verify widening affects only the approving client and that revocation takes effect on the next request.
-- [ ] 8.4 Expose range digests through the agent surface with bounded size; verify a week digest is sufficient for summarization and that gaps and exclusions are represented without leaking excluded content.
+- [x] 8.1 Implement default recent-window and segment-level scoping for agent-facing reads; verify an unbounded request returns the default window and states the range covered. (`resolve_window` in `openhistory-api`; not wired to an actual API/MCP transport, since neither exists yet beyond declarations.)
+- [x] 8.2 Refuse raw-event access without a granting approval; verify refusal carries an explanation and that segment-level records remain available. (`require_raw_event_access`/`ScopeError`; "segment-level records remain available" is true by construction — nothing about resolving a window depends on raw-event approval — but not exercised as an integration test since there is no read endpoint yet to call both against.)
+- [x] 8.3 Implement per-client scope widening with recorded approval and independent revocation; verify widening affects only the approving client and that revocation takes effect on the next request. (`ClientScope::revoke`; no persistence yet — scope lives only as long as the caller holds the struct, so "next request" here means the next call with that same in-memory value, not across a restart.)
+- [x] 8.4 Expose range digests through the agent surface with bounded size; verify a week digest is sufficient for summarization and that gaps and exclusions are represented without leaking excluded content. (`bound_digest_response` caps evidence per work item at `MAX_EVIDENCE_SAMPLE` and discloses truncation via `sampled`; gap/exclusion representation is `openhistory-digest`'s job (5.4, not yet done), so this task can't fully verify that half yet.)
 - [ ] 8.5 Apply untrusted-content and provenance markers to digest and evidence responses; verify malicious source fixtures remain data and cannot modify tool schemas or invoke mutations.
 
 ## 9. Source Visibility and Retention

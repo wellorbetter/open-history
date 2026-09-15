@@ -5,8 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+openhistory-digest = { path = "../openhistory-digest" }
 chrono.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+openhistory-domain = { path = "../openhistory-domain" }
 
 [lints]
 workspace = true

@@ -2702,6 +2702,8 @@ name = "openhistory-api"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "openhistory-digest",
+ "openhistory-domain",
  "serde",
 ]
 

@@ -270,7 +270,7 @@ function TaskInspector({ segment, onDelete }: { segment?: ActivitySegment; onDel
         </div>
         <span>
           {revision?.createdAt
-            ? new Date(revision.createdAt).toLocaleString()
+            ? new Date(revision.createdAt).toLocaleString('en-US')
             : 'Available offline'}
         </span>
       </div>

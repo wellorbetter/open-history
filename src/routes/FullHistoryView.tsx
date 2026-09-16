@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
   CalendarRange,
@@ -8,6 +8,7 @@ import {
   FileClock,
   Filter,
   History,
+  Palette,
   Search,
   Settings,
   ShieldCheck,
@@ -16,7 +17,13 @@ import {
 } from 'lucide-react';
 import { dashboardFixture, weekDigestFixtures } from '../fixtures';
 import { bridge } from '../lib/bridge';
-import type { ActivitySegment, DashboardSnapshot, HistoryDeleteScope, WeekDigest } from '../types';
+import type {
+  ActivitySegment,
+  DashboardSnapshot,
+  HistoryDeleteScope,
+  TrayIconStyle,
+  WeekDigest,
+} from '../types';
 import { BrandMark } from '../components/BrandMark';
 import { DestructiveDialog } from '../components/DestructiveDialog';
 import { IconButton } from '../components/IconButton';
@@ -333,6 +340,14 @@ function SettingsPanel({
         </SettingsCard>
 
         <SettingsCard
+          icon={<Palette size={19} />}
+          title="Menu bar icon"
+          description="Choose how the icon in the menu bar is rendered."
+        >
+          <TrayIconStyleField />
+        </SettingsCard>
+
+        <SettingsCard
           icon={<Trash2 size={19} />}
           title="Delete local history"
           description="Remove raw events, summaries, indexes, and managed exports."
@@ -344,6 +359,44 @@ function SettingsPanel({
         </SettingsCard>
       </div>
     </section>
+  );
+}
+
+function TrayIconStyleField() {
+  const [style, setStyle] = useState<TrayIconStyle>();
+
+  useEffect(() => {
+    let cancelled = false;
+    void bridge.getTrayIconStyle().then((loaded) => {
+      if (!cancelled) setStyle(loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onChange = (next: TrayIconStyle) => {
+    setStyle(next);
+    void bridge.setTrayIconStyle(next);
+  };
+
+  return (
+    <>
+      <label className="field-label" htmlFor="tray-icon-style">
+        Icon style
+      </label>
+      <select
+        id="tray-icon-style"
+        value={style ?? 'monochrome'}
+        onChange={(event) => onChange(event.target.value as TrayIconStyle)}
+      >
+        <option value="monochrome">System (black &amp; white)</option>
+        <option value="color">Brand green</option>
+      </select>
+      <p className="setting-note">
+        System matches native macOS menu bar icons and follows light/dark mode automatically.
+      </p>
+    </>
   );
 }
 

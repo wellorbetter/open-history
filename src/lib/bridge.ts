@@ -1,6 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 import { dashboardFixture } from '../fixtures';
-import type { CollectionStatus, DashboardSnapshot, HistoryDeleteScope, WeekDigest } from '../types';
+import type {
+  CollectionStatus,
+  DashboardSnapshot,
+  HistoryDeleteScope,
+  TrayIconStyle,
+  WeekDigest,
+} from '../types';
+
+const TRAY_ICON_STYLE_FIXTURE_KEY = 'openhistory-tray-icon-style-fixture';
 
 declare global {
   interface Window {
@@ -54,5 +62,25 @@ export const bridge = {
   async exportWeekReport(digest: WeekDigest): Promise<void> {
     void digest;
     await delay(120);
+  },
+
+  /**
+   * Reads the menu bar icon style.
+   *
+   * There is no tray icon outside the native app, so the browser-only fixture route persists the
+   * choice in `localStorage` purely so the setting is exercisable there too.
+   */
+  async getTrayIconStyle(): Promise<TrayIconStyle> {
+    if (isTauri()) return invoke<TrayIconStyle>('get_tray_icon_style');
+    await delay(20);
+    const stored = window.localStorage.getItem(TRAY_ICON_STYLE_FIXTURE_KEY);
+    return stored === 'color' ? 'color' : 'monochrome';
+  },
+
+  async setTrayIconStyle(style: TrayIconStyle): Promise<TrayIconStyle> {
+    if (isTauri()) return invoke<TrayIconStyle>('set_tray_icon_style', { style });
+    await delay(40);
+    window.localStorage.setItem(TRAY_ICON_STYLE_FIXTURE_KEY, style);
+    return style;
   },
 };

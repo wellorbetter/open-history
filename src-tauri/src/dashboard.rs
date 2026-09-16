@@ -180,6 +180,29 @@ pub fn delete_history(scope: &str, app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+/// Returns the persisted menu bar icon style.
+pub fn get_tray_icon_style(app: AppHandle) -> crate::preferences::TrayIconStyle {
+    crate::preferences::load_tray_icon_style(&app)
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+/// Persists a new menu bar icon style and applies it to the live tray icon.
+///
+/// # Errors
+///
+/// Returns an error when the preference cannot be saved or the tray icon cannot be updated.
+pub fn set_tray_icon_style(
+    style: crate::preferences::TrayIconStyle,
+    app: AppHandle,
+) -> Result<crate::preferences::TrayIconStyle, String> {
+    crate::preferences::save_tray_icon_style(&app, style).map_err(|error| error.to_string())?;
+    crate::tray::apply_style(&app, style).map_err(|error| error.to_string())?;
+    Ok(style)
+}
+
 fn fixture_snapshot(status: CollectionStatus) -> Value {
     let sources = json!([
         {"id":"terminal","name":"Terminal","kind":"terminal","color":"#252a2d"},

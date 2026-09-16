@@ -4,34 +4,71 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 
+use crate::preferences::TrayIconStyle;
+
 /// A monochrome sparkle glyph on a transparent background, distinct from the
 /// full-color, fully-opaque app icon: macOS template mode discards color and
 /// keeps only alpha as a mask, so using the app icon there renders as a
 /// featureless solid block instead of a glyph.
-const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon.png");
+const MONOCHROME_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon.png");
+
+/// The app's own brand mark (light green rounded badge, dark sparkle), for
+/// users who prefer a colored icon matching the logo over the system-template
+/// convention. Not a template image: macOS would otherwise discard its color
+/// the same way it does above.
+const COLOR_ICON_BYTES: &[u8] = include_bytes!("../icons/64x64.png");
+
+fn icon_for_style(app: &AppHandle, style: TrayIconStyle) -> Image<'static> {
+    let bytes = match style {
+        TrayIconStyle::Monochrome => MONOCHROME_ICON_BYTES,
+        TrayIconStyle::Color => COLOR_ICON_BYTES,
+    };
+    Image::from_bytes(bytes).unwrap_or_else(|_| {
+        app.default_window_icon()
+            .cloned()
+            .map_or_else(fallback_icon, Image::to_owned)
+    })
+}
+
+fn fallback_icon() -> Image<'static> {
+    Image::new_owned(vec![0, 0, 0, 0], 1, 1)
+}
+
+/// A template image is only meaningful for the monochrome style: it is what
+/// makes macOS follow the system menu bar's light/dark appearance. Coloring
+/// the glyph requires opting out of that so its color isn't discarded.
+fn is_template(style: TrayIconStyle) -> bool {
+    matches!(style, TrayIconStyle::Monochrome)
+}
 
 /// Creates the native notification-area icon.
 ///
 /// # Errors
 ///
 /// Returns a Tauri error when the tray icon cannot be constructed.
-pub fn setup(app: &mut App) -> tauri::Result<()> {
+pub fn setup(app: &mut App, style: TrayIconStyle) -> tauri::Result<()> {
     let mut tray = TrayIconBuilder::with_id("openhistory")
         .tooltip("OpenHistory · Recording")
-        .show_menu_on_left_click(false);
-    tray = match Image::from_bytes(TRAY_ICON_BYTES) {
-        Ok(icon) => tray.icon(icon),
-        Err(_) => match app.default_window_icon() {
-            Some(icon) => tray.icon(icon.clone()),
-            None => tray,
-        },
-    };
+        .show_menu_on_left_click(false)
+        .icon(icon_for_style(&app.handle().clone(), style));
     #[cfg(target_os = "macos")]
     {
-        tray = tray.icon_as_template(true);
+        tray = tray.icon_as_template(is_template(style));
     }
     tray.build(app)?;
     Ok(())
+}
+
+/// Updates the live tray icon to match a newly chosen style.
+///
+/// # Errors
+///
+/// Returns a Tauri error when the tray icon cannot be found or updated.
+pub fn apply_style(app: &AppHandle, style: TrayIconStyle) -> tauri::Result<()> {
+    let Some(tray) = app.tray_by_id("openhistory") else {
+        return Ok(());
+    };
+    tray.set_icon_with_as_template(Some(icon_for_style(app, style)), is_template(style))
 }
 /// Handles primary tray clicks and toggles the compact surface.
 #[allow(clippy::needless_pass_by_value)]

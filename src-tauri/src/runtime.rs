@@ -6,11 +6,13 @@ use std::{
 };
 
 use openhistory_adapters::{ActivityAdapter, AdapterError, bounded_event_channel};
+use openhistory_domain::EventEnvelope;
 use openhistory_entities::ProjectRegistry;
 use openhistory_platform::{
     CaptureDetail, CollectionGate, PlatformAdapter, platform_permission_granted,
 };
 use openhistory_privacy::PrivacyPolicy;
+use openhistory_segmentation::{SegmentationSettings, TaskSegment, segment_events};
 use openhistory_storage::{
     EncryptedDatabase, HistoryRepository, OsDatabaseKeyProvider, StorageError,
 };
@@ -184,5 +186,23 @@ impl CollectorRuntime {
         self.database
             .lock()
             .map_or(0, |database| database.events().len())
+    }
+
+    /// Deterministically segments today's persisted events for dashboard projection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage error if the encrypted database cannot be read.
+    pub fn today_segments(&self) -> Result<Vec<TaskSegment>, StorageError> {
+        let today = chrono::Local::now().date_naive();
+        let events: Vec<EventEnvelope> = self
+            .database
+            .lock()
+            .map_err(|_| StorageError::Database)?
+            .events()
+            .into_iter()
+            .filter(|event| event.occurred_at.date_naive() == today)
+            .collect();
+        Ok(segment_events(&events, SegmentationSettings::default()))
     }
 }

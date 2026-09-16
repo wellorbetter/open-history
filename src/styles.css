@@ -616,6 +616,11 @@ button.current-card:active {
   background: var(--surface-solid);
 }
 
+.history-shell--centered {
+  grid-template-columns: 1fr;
+  place-items: center;
+}
+
 .sidebar {
   display: flex;
   min-width: 0;

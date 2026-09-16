@@ -15,7 +15,8 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react';
-import { dashboardFixture, weekDigestFixtures } from '../fixtures';
+import { weekDigestFixtures } from '../fixtures';
+import { useDashboard } from '../hooks/useDashboard';
 import { bridge } from '../lib/bridge';
 import type {
   ActivitySegment,
@@ -26,6 +27,7 @@ import type {
 } from '../types';
 import { BrandMark } from '../components/BrandMark';
 import { DestructiveDialog } from '../components/DestructiveDialog';
+import { ErrorState, LoadingState } from '../components/FeedbackState';
 import { IconButton } from '../components/IconButton';
 import { SourceStack } from '../components/SourceStack';
 import { StatusBadge } from '../components/StatusBadge';
@@ -34,11 +36,31 @@ import { WeekPane } from '../components/WeekPane';
 type FullSection = 'history' | 'week' | 'settings';
 
 export function FullHistoryView({
-  initial = dashboardFixture,
+  initial,
   weeks = weekDigestFixtures,
 }: {
   initial?: DashboardSnapshot;
   weeks?: WeekDigest[];
+}) {
+  const { snapshot, loading, error, retry } = useDashboard(initial);
+
+  if (loading || !snapshot) {
+    return (
+      <main className="history-shell history-shell--centered" aria-label="OpenHistory full history">
+        {error ? <ErrorState message={error} onRetry={retry} /> : <LoadingState />}
+      </main>
+    );
+  }
+
+  return <LoadedFullHistoryView initial={snapshot} weeks={weeks} />;
+}
+
+function LoadedFullHistoryView({
+  initial,
+  weeks,
+}: {
+  initial: DashboardSnapshot;
+  weeks: WeekDigest[];
 }) {
   const requestedSegment = new URLSearchParams(window.location.search).get('segment');
   const [section, setSection] = useState<FullSection>('history');
@@ -46,6 +68,13 @@ export function FullHistoryView({
   const [selectedId, setSelectedId] = useState(requestedSegment ?? initial.current?.id);
   const [deleteScope, setDeleteScope] = useState<HistoryDeleteScope>();
   const [deleted, setDeleted] = useState<Set<string>>(() => new Set());
+  const dayHeading = useMemo(
+    () =>
+      new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(
+        new Date(`${initial.selectedDate}T12:00:00`),
+      ),
+    [initial.selectedDate],
+  );
 
   const segments = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -121,8 +150,8 @@ export function FullHistoryView({
           <section className="history-list-pane" aria-label="History results">
             <header className="history-toolbar">
               <div>
-                <p className="eyebrow">Today</p>
-                <h1>September 8</h1>
+                <p className="eyebrow">{initial.isToday ? 'Today' : 'Selected day'}</p>
+                <h1>{dayHeading}</h1>
               </div>
               <div className="toolbar-actions">
                 <IconButton label="Previous day" quiet>

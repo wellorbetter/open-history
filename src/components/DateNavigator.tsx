@@ -11,7 +11,10 @@ export function DateNavigator({
   onReview: () => void;
 }) {
   const value = new Date(`${date}T12:00:00`);
-  const heading = new Intl.DateTimeFormat(undefined, {
+  // Pinned to 'en-US': the surrounding UI copy is English-only, so following the
+  // runtime's default locale here would mix English labels with a differently
+  // formatted (or non-English) date on a non-English system.
+  const heading = new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
     weekday: 'short',

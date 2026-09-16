@@ -14,9 +14,12 @@ import { bridge } from '../lib/bridge';
 import type { WeekDigest, WorkEvidence, WorkItem } from '../types';
 import { IconButton } from './IconButton';
 
+// Pinned to 'en-US' throughout this file: the surrounding UI copy is English-only,
+// so following the runtime's default locale would mix English labels with a
+// differently formatted (or non-English) date on a non-English system.
 function weekRangeLabel(rangeStart: string, rangeEnd: string) {
   const format = (value: string) =>
-    new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(
+    new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
       new Date(`${value}T12:00:00`),
     );
   return `${format(rangeStart)} – ${format(rangeEnd)}`;
@@ -227,7 +230,7 @@ function EvidenceRow({
   evidence: WorkEvidence;
   onOpen: (segmentId: string) => void;
 }) {
-  const when = new Date(evidence.occurredAt).toLocaleString(undefined, {
+  const when = new Date(evidence.occurredAt).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',

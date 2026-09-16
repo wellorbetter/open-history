@@ -13,9 +13,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
+chrono.workspace = true
 openhistory-adapters = { path = "../crates/openhistory-adapters" }
 openhistory-api = { path = "../crates/openhistory-api" }
 openhistory-domain = { path = "../crates/openhistory-domain" }
+openhistory-entities = { path = "../crates/openhistory-entities" }
 openhistory-privacy = { path = "../crates/openhistory-privacy" }
 openhistory-platform = { path = "../crates/openhistory-platform" }
 openhistory-segmentation = { path = "../crates/openhistory-segmentation" }

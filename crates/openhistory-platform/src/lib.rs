@@ -13,9 +13,10 @@ use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
 use openhistory_adapters::{ActivityAdapter, AdapterError, EventSender};
 use openhistory_domain::{
-    AdapterKind, ApplicationIdentity, CaptureQuality, EventEnvelope, SemanticPayload,
+    AdapterKind, ApplicationIdentity, CaptureQuality, EntityKind, EventEnvelope, SemanticPayload,
     SourceIdentity,
 };
+use openhistory_entities::{ProjectRegistry, Resolver, WindowObservation};
 use openhistory_privacy::{CandidateContext, PolicyDecision, PrivacyPolicy};
 
 #[cfg(target_os = "macos")]
@@ -56,7 +57,8 @@ pub struct PlatformSnapshot {
     pub application: Option<String>,
     /// Active window title.
     pub window_title: Option<String>,
-    /// Document identifier. The canonical event stores only a one-way local hash.
+    /// Document identifier as exposed by the platform. Resolved into a project entity and then
+    /// discarded before the canonical event is constructed; the raw value never reaches storage.
     pub document: Option<String>,
     /// Focused accessibility role.
     pub role: Option<String>,
@@ -69,13 +71,16 @@ pub struct PlatformSnapshot {
 /// Converts a transition into minimized canonical events after privacy policy evaluation.
 ///
 /// Excluded snapshots are dropped before an [`EventEnvelope`] is constructed. `first_tick` is the
-/// first monotonic value assigned to this transition.
+/// first monotonic value assigned to this transition. `resolver` turns `current.document` into a
+/// project entity identifier immediately, so the raw path exists only for the duration of this
+/// call and is never included in the returned events.
 #[must_use]
 pub fn canonical_events(
     previous: Option<&PlatformSnapshot>,
     current: &PlatformSnapshot,
     detail: CaptureDetail,
     policy: &PrivacyPolicy,
+    resolver: &Resolver,
     occurred_at: DateTime<FixedOffset>,
     first_tick: u64,
 ) -> Vec<EventEnvelope> {
@@ -123,11 +128,12 @@ pub fn canonical_events(
         );
     }
     if detail >= CaptureDetail::Window && window_changed {
+        let project_id = resolve_project_id(resolver, current, &source);
         push(
             CaptureQuality::Window,
             SemanticPayload::WindowChanged {
                 window_title: minimized(current.window_title.as_deref(), MAX_WINDOW_CHARS),
-                project_id: current.document.as_deref().map(document_fingerprint),
+                project_id,
             },
         );
     }
@@ -179,9 +185,34 @@ fn minimized(value: Option<&str>, maximum: usize) -> Option<String> {
     Some(collapsed.chars().take(maximum).collect())
 }
 
-fn document_fingerprint(value: &str) -> String {
-    blake3::hash(value.as_bytes()).to_hex()[..20].to_owned()
+/// Resolves the project entity for a snapshot, returning its identifier as a string.
+///
+/// This is the only place the raw `current.document` value is read: it is passed to the resolver
+/// and then dropped, never reaching the returned string.
+fn resolve_project_id(
+    resolver: &Resolver,
+    current: &PlatformSnapshot,
+    source: &SourceIdentity,
+) -> Option<String> {
+    let provenance = openhistory_domain::EntityProvenance {
+        adapter: source.adapter,
+        source_id: source.source_id.clone(),
+    };
+    let resolution = resolver.resolve(
+        &WindowObservation {
+            application: current.application.as_deref(),
+            application_id: source.application.platform_id.as_deref(),
+            window_title: current.window_title.as_deref(),
+            document_path: current.document.as_deref(),
+            url: None,
+        },
+        &provenance,
+    );
+    resolution
+        .entity(EntityKind::Project)
+        .map(|entity| entity.id.to_string())
 }
+
 impl CollectionGate {
     /// Collection can run only while both controls are positive.
     #[must_use]
@@ -195,6 +226,7 @@ pub struct PlatformAdapter {
     gate: CollectionGate,
     detail: CaptureDetail,
     policy: PrivacyPolicy,
+    resolver: Resolver,
     running: Arc<AtomicBool>,
     #[cfg(target_os = "macos")]
     stop: Option<tokio::sync::watch::Sender<bool>>,
@@ -208,6 +240,7 @@ impl Default for PlatformAdapter {
             gate: CollectionGate::default(),
             detail: CaptureDetail::default(),
             policy: PrivacyPolicy::default(),
+            resolver: Resolver::new(ProjectRegistry::default(), None),
             running: Arc::new(AtomicBool::new(false)),
             #[cfg(target_os = "macos")]
             stop: None,
@@ -238,6 +271,19 @@ impl PlatformAdapter {
     /// Replaces the exclusion policy used before event construction.
     pub fn set_privacy_policy(&mut self, policy: PrivacyPolicy) {
         self.policy = policy;
+    }
+
+    /// Replaces the opted-in repository roots used to resolve project entities.
+    ///
+    /// A document outside every registered root resolves to no project, matching the
+    /// repository-opt-in requirement: adding a repository here is what turns its paths into
+    /// reportable project identity.
+    pub fn set_project_registry(
+        &mut self,
+        registry: ProjectRegistry,
+        home_directory: Option<String>,
+    ) {
+        self.resolver = Resolver::new(registry, home_directory);
     }
 
     /// Reports visible adapter health without source content.
@@ -283,6 +329,7 @@ impl ActivityAdapter for PlatformAdapter {
                 receiver,
                 self.detail,
                 self.policy.clone(),
+                self.resolver.clone(),
                 running,
             )));
             return Ok(());
@@ -382,14 +429,18 @@ mod tests {
     }
 
     #[test]
-    fn capture_detail_is_explicit_and_document_paths_are_one_way() {
+    fn capture_detail_is_explicit_and_project_identity_is_resolved_not_hashed() {
         let current = snapshot("Editor", "OpenHistory");
         let at = chrono::DateTime::parse_from_rfc3339("2026-09-08T16:50:00+08:00").unwrap();
+        // Registering the document's parent directory as an opted-in repository is what lets the
+        // resolver turn the raw path into a project identity at all.
+        let resolver = Resolver::new(ProjectRegistry::new(["/private/path"]), None);
         let window = canonical_events(
             None,
             &current,
             CaptureDetail::Window,
             &PrivacyPolicy::default(),
+            &resolver,
             at,
             10,
         );
@@ -399,17 +450,41 @@ mod tests {
             panic!("expected window event");
         };
         assert_ne!(project_id.as_deref(), current.document.as_deref());
-        assert_eq!(project_id.as_deref().map(str::len), Some(20));
+        let expected = openhistory_domain::EntityId::derive(
+            &openhistory_domain::EntityKey::repository_path("/private/path").unwrap(),
+        );
+        assert_eq!(project_id.as_deref(), Some(expected.as_str()));
 
         let semantic = canonical_events(
             None,
             &current,
             CaptureDetail::Semantic,
             &PrivacyPolicy::default(),
+            &resolver,
             at,
             20,
         );
         assert_eq!(semantic.len(), 3);
+    }
+
+    #[test]
+    fn an_unregistered_document_resolves_no_project() {
+        let current = snapshot("Editor", "OpenHistory");
+        let at = chrono::DateTime::parse_from_rfc3339("2026-09-08T16:50:00+08:00").unwrap();
+        let resolver = Resolver::default();
+        let window = canonical_events(
+            None,
+            &current,
+            CaptureDetail::Window,
+            &PrivacyPolicy::default(),
+            &resolver,
+            at,
+            10,
+        );
+        let SemanticPayload::WindowChanged { project_id, .. } = &window[1].payload else {
+            panic!("expected window event");
+        };
+        assert_eq!(*project_id, None);
     }
 
     #[test]
@@ -420,8 +495,18 @@ mod tests {
             window_patterns: vec!["secret".to_owned()],
             ..PrivacyPolicy::default()
         };
+        let resolver = Resolver::default();
         assert!(
-            canonical_events(None, &current, CaptureDetail::Semantic, &policy, at, 0).is_empty()
+            canonical_events(
+                None,
+                &current,
+                CaptureDetail::Semantic,
+                &policy,
+                &resolver,
+                at,
+                0
+            )
+            .is_empty()
         );
 
         current.window_title = Some("Allowed".to_owned());
@@ -432,6 +517,7 @@ mod tests {
             &current,
             CaptureDetail::Semantic,
             &PrivacyPolicy::default(),
+            &resolver,
             at,
             0,
         );

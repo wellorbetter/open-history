@@ -9,7 +9,7 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-use openhistory_domain::{EventEnvelope, normalize_event_order};
+use openhistory_domain::{EntityKey, EventEnvelope, SemanticPayload, normalize_event_order};
 use openhistory_segmentation::TaskSegment;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS task_segments (
     started_at TEXT NOT NULL,
     ended_at TEXT NOT NULL,
     segment_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS opted_in_repositories (
+    root_path TEXT PRIMARY KEY,
+    added_at TEXT NOT NULL
 );
 INSERT OR IGNORE INTO schema_migrations(version, applied_at)
 VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
@@ -347,6 +351,92 @@ impl HistoryRepository for EncryptedDatabase {
             segments: 0,
         })
     }
+
+    fn add_repository(
+        &mut self,
+        root_path: &str,
+        added_at: DateTime<FixedOffset>,
+    ) -> Result<(), StorageError> {
+        let Some(normalized) = normalized_repository_root(root_path) else {
+            return Ok(());
+        };
+        self.connection
+            .execute(
+                "INSERT OR IGNORE INTO opted_in_repositories(root_path, added_at) VALUES (?1, ?2)",
+                (normalized, added_at.with_timezone(&Utc).to_rfc3339()),
+            )
+            .map_err(|_| StorageError::Database)?;
+        Ok(())
+    }
+
+    fn remove_repository(&mut self, root_path: &str) -> Result<(), StorageError> {
+        let Some(normalized) = normalized_repository_root(root_path) else {
+            return Ok(());
+        };
+        self.connection
+            .execute(
+                "DELETE FROM opted_in_repositories WHERE root_path = ?1",
+                [normalized],
+            )
+            .map_err(|_| StorageError::Database)?;
+        Ok(())
+    }
+
+    fn opted_in_repositories(&self) -> Vec<String> {
+        let Ok(mut statement) = self
+            .connection
+            .prepare("SELECT root_path FROM opted_in_repositories ORDER BY root_path")
+        else {
+            return Vec::new();
+        };
+        let Ok(rows) = statement.query_map([], |row| row.get::<_, String>(0)) else {
+            return Vec::new();
+        };
+        rows.filter_map(Result::ok).collect()
+    }
+
+    fn delete_repository_evidence(
+        &mut self,
+        root_path: &str,
+    ) -> Result<DeletionReport, StorageError> {
+        let Some(normalized_root) = normalized_repository_root(root_path) else {
+            return Ok(DeletionReport::default());
+        };
+
+        let matching_ids: Vec<String> = {
+            let mut statement = self
+                .connection
+                .prepare("SELECT event_id, event_json FROM raw_events")
+                .map_err(|_| StorageError::Database)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|_| StorageError::Database)?;
+            rows.filter_map(Result::ok)
+                .filter_map(|(event_id, event_json)| {
+                    let event: EventEnvelope = serde_json::from_str(&event_json).ok()?;
+                    commit_matches_repository(&event, &normalized_root).then_some(event_id)
+                })
+                .collect()
+        };
+
+        let transaction = self
+            .connection
+            .transaction()
+            .map_err(|_| StorageError::Database)?;
+        for event_id in &matching_ids {
+            transaction
+                .execute("DELETE FROM raw_events WHERE event_id = ?1", [event_id])
+                .map_err(|_| StorageError::RolledBack)?;
+        }
+        transaction.commit().map_err(|_| StorageError::RolledBack)?;
+
+        Ok(DeletionReport {
+            raw_events: matching_ids.len(),
+            segments: 0,
+        })
+    }
 }
 /// Supported raw-event retention settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -398,6 +488,67 @@ pub trait HistoryRepository {
         now: DateTime<FixedOffset>,
         policy: RetentionPolicy,
     ) -> Result<DeletionReport, StorageError>;
+
+    /// Opts a repository root into Git evidence collection.
+    ///
+    /// A path that carries no identity (blank, or the filesystem root) is silently ignored,
+    /// matching the resolver's own normalization: there is no repository to observe.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when the write cannot complete.
+    fn add_repository(
+        &mut self,
+        root_path: &str,
+        added_at: DateTime<FixedOffset>,
+    ) -> Result<(), StorageError>;
+
+    /// Withdraws a previously opted-in repository. Removing a root that was never added is not an
+    /// error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when the write cannot complete.
+    fn remove_repository(&mut self, root_path: &str) -> Result<(), StorageError>;
+
+    /// Returns every opted-in repository root, normalized and in a stable order.
+    fn opted_in_repositories(&self) -> Vec<String>;
+
+    /// Deletes every stored event whose evidence came from `root_path`, regardless of whether the
+    /// repository is still opted in.
+    ///
+    /// This is what makes exclusion retroactive: opting a repository out stops future collection
+    /// through [`HistoryRepository::remove_repository`], and this removes what was already
+    /// stored. The two are separate calls so a caller can withdraw access without necessarily
+    /// discarding history, or vice versa.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when cleanup cannot complete transactionally.
+    fn delete_repository_evidence(
+        &mut self,
+        root_path: &str,
+    ) -> Result<DeletionReport, StorageError>;
+}
+
+/// Normalizes a repository root using the same rule the entity resolver's project registry
+/// applies, so a path stored here and a path checked there always agree on identity.
+fn normalized_repository_root(root_path: &str) -> Option<String> {
+    EntityKey::repository_path(root_path).map(|key| key.value().to_owned())
+}
+
+/// Returns true when `event` is a `RepositoryCommit` sourced from `normalized_root`.
+///
+/// Comparison happens on the already-normalized root so that trailing-separator or whitespace
+/// differences between how a path was stored and how it is being removed can never cause evidence
+/// to survive its own repository's removal.
+fn commit_matches_repository(event: &EventEnvelope, normalized_root: &str) -> bool {
+    match &event.payload {
+        SemanticPayload::RepositoryCommit {
+            repository_path, ..
+        } => normalized_repository_root(repository_path).as_deref() == Some(normalized_root),
+        _ => false,
+    }
 }
 
 /// In-memory backend for synthetic journeys. It is never used as a production fallback.
@@ -405,6 +556,7 @@ pub trait HistoryRepository {
 pub struct MemoryHistoryRepository {
     events: BTreeMap<String, EventEnvelope>,
     segments: BTreeMap<String, TaskSegment>,
+    repositories: std::collections::BTreeSet<String>,
 }
 
 impl HistoryRepository for MemoryHistoryRepository {
@@ -433,6 +585,44 @@ impl HistoryRepository for MemoryHistoryRepository {
         };
         let before = self.events.len();
         self.events.retain(|_, event| event.occurred_at >= cutoff);
+        Ok(DeletionReport {
+            raw_events: before - self.events.len(),
+            segments: 0,
+        })
+    }
+
+    fn add_repository(
+        &mut self,
+        root_path: &str,
+        _added_at: DateTime<FixedOffset>,
+    ) -> Result<(), StorageError> {
+        if let Some(normalized) = normalized_repository_root(root_path) {
+            self.repositories.insert(normalized);
+        }
+        Ok(())
+    }
+
+    fn remove_repository(&mut self, root_path: &str) -> Result<(), StorageError> {
+        if let Some(normalized) = normalized_repository_root(root_path) {
+            self.repositories.remove(&normalized);
+        }
+        Ok(())
+    }
+
+    fn opted_in_repositories(&self) -> Vec<String> {
+        self.repositories.iter().cloned().collect()
+    }
+
+    fn delete_repository_evidence(
+        &mut self,
+        root_path: &str,
+    ) -> Result<DeletionReport, StorageError> {
+        let Some(normalized_root) = normalized_repository_root(root_path) else {
+            return Ok(DeletionReport::default());
+        };
+        let before = self.events.len();
+        self.events
+            .retain(|_, event| !commit_matches_repository(event, &normalized_root));
         Ok(DeletionReport {
             raw_events: before - self.events.len(),
             segments: 0,
@@ -487,6 +677,30 @@ mod tests {
             },
             CaptureQuality::Window,
             SemanticPayload::ApplicationActivated,
+        )
+    }
+
+    fn commit_event(timestamp: &str, ticks: u64, repository_path: &str) -> EventEnvelope {
+        EventEnvelope::new(
+            DateTime::parse_from_rfc3339(timestamp).unwrap(),
+            ticks,
+            SourceIdentity {
+                source_id: "git:fixture".into(),
+                adapter: AdapterKind::Import,
+                application: ApplicationIdentity {
+                    display_name: Some("Git".into()),
+                    platform_id: None,
+                    process_id: None,
+                },
+            },
+            CaptureQuality::Semantic,
+            SemanticPayload::RepositoryCommit {
+                repository_path: repository_path.to_owned(),
+                commit_id: format!("commit-{ticks}"),
+                branch: Some("main".into()),
+                subject: Some("fixture commit".into()),
+                changed_paths: vec!["src/lib.rs".into()],
+            },
         )
     }
 
@@ -578,5 +792,158 @@ mod tests {
             Err(StorageError::InvalidKey)
         ));
         assert!(DatabaseKey::parse(&"ab".repeat(DATABASE_KEY_BYTES)).is_ok());
+    }
+
+    fn added_at() -> DateTime<FixedOffset> {
+        DateTime::parse_from_rfc3339("2026-09-15T09:00:00+08:00").unwrap()
+    }
+
+    #[test]
+    fn memory_repository_opt_in_is_normalized_deduplicated_and_ordered() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .add_repository("/Users/dev/beta", added_at())
+            .unwrap();
+        repository
+            .add_repository("/Users/dev/alpha/", added_at())
+            .unwrap();
+        repository
+            .add_repository("/Users/dev/alpha", added_at())
+            .unwrap();
+
+        assert_eq!(
+            repository.opted_in_repositories(),
+            vec!["/Users/dev/alpha".to_owned(), "/Users/dev/beta".to_owned()]
+        );
+    }
+
+    #[test]
+    fn memory_repository_removal_and_blank_paths_are_handled() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .add_repository("/Users/dev/alpha", added_at())
+            .unwrap();
+        repository.add_repository("   ", added_at()).unwrap();
+        assert_eq!(repository.opted_in_repositories().len(), 1);
+
+        repository.remove_repository("/Users/dev/alpha").unwrap();
+        assert!(repository.opted_in_repositories().is_empty());
+        // Removing something never added, or a blank path, is not an error.
+        repository.remove_repository("/never/added").unwrap();
+        repository.remove_repository("").unwrap();
+    }
+
+    #[test]
+    fn encrypted_repository_persists_opted_in_repositories_across_reopen() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("history.sqlite3");
+        let key = DatabaseKey::generate();
+
+        {
+            let mut database = EncryptedDatabase::open(&path, &key).unwrap();
+            database
+                .add_repository("/Users/dev/open-history/", added_at())
+                .unwrap();
+            database
+                .add_repository("/Users/dev/open-history", added_at())
+                .unwrap();
+            database
+                .add_repository("/Users/dev/timetrace", added_at())
+                .unwrap();
+        }
+
+        let mut reopened = EncryptedDatabase::open(&path, &key).unwrap();
+        assert_eq!(
+            reopened.opted_in_repositories(),
+            vec![
+                "/Users/dev/open-history".to_owned(),
+                "/Users/dev/timetrace".to_owned()
+            ]
+        );
+
+        reopened.remove_repository("/Users/dev/timetrace").unwrap();
+        assert_eq!(
+            reopened.opted_in_repositories(),
+            vec!["/Users/dev/open-history".to_owned()]
+        );
+    }
+
+    #[test]
+    fn memory_repository_removal_deletes_only_that_repositorys_evidence() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .insert_event(commit_event("2026-09-14T10:00:00+08:00", 1, "/work/app"))
+            .unwrap();
+        repository
+            .insert_event(commit_event("2026-09-14T11:00:00+08:00", 2, "/work/other"))
+            .unwrap();
+        repository
+            .insert_event(event("2026-09-14T12:00:00+08:00", 3))
+            .unwrap();
+
+        let report = repository.delete_repository_evidence("/work/app").unwrap();
+
+        assert_eq!(report.raw_events, 1);
+        let remaining = repository.events();
+        assert_eq!(remaining.len(), 2);
+        assert!(!remaining.iter().any(|event| commit_matches_repository(
+            event,
+            &normalized_repository_root("/work/app").unwrap()
+        )));
+    }
+
+    #[test]
+    fn deletion_is_a_no_op_for_a_repository_with_no_stored_evidence() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .insert_event(commit_event("2026-09-14T10:00:00+08:00", 1, "/work/app"))
+            .unwrap();
+
+        let report = repository
+            .delete_repository_evidence("/work/never-had-any-commits")
+            .unwrap();
+
+        assert_eq!(report.raw_events, 0);
+        assert_eq!(repository.events().len(), 1);
+    }
+
+    #[test]
+    fn encrypted_repository_removal_deletes_only_that_repositorys_evidence() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("history.sqlite3");
+        let key = DatabaseKey::generate();
+        let mut database = EncryptedDatabase::open(&path, &key).unwrap();
+        database
+            .insert_event(commit_event("2026-09-14T10:00:00+08:00", 1, "/work/app"))
+            .unwrap();
+        database
+            .insert_event(commit_event("2026-09-14T11:00:00+08:00", 2, "/work/other"))
+            .unwrap();
+
+        let report = database.delete_repository_evidence("/work/app/").unwrap();
+
+        assert_eq!(report.raw_events, 1);
+        assert_eq!(database.events().len(), 1);
+    }
+
+    #[test]
+    fn artifact_derived_evidence_is_swept_by_the_same_raw_retention_as_platform_events() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .insert_event(commit_event("2026-09-06T15:59:59+08:00", 1, "/work/app"))
+            .unwrap();
+        repository
+            .insert_event(commit_event("2026-09-06T16:00:00+08:00", 2, "/work/app"))
+            .unwrap();
+
+        let now = DateTime::parse_from_rfc3339("2026-09-08T16:00:00+08:00").unwrap();
+        let report = repository
+            .sweep_retention(now, RetentionPolicy::default())
+            .unwrap();
+
+        // Retention does not special-case a payload kind: the same 48-hour cutoff that applies to
+        // window-activity events applies to repository-commit events, without a parallel sweep.
+        assert_eq!(report.raw_events, 1);
+        assert_eq!(repository.events().len(), 1);
     }
 }

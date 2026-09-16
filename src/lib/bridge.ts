@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { dashboardFixture } from '../fixtures';
-import type { CollectionStatus, DashboardSnapshot, HistoryDeleteScope } from '../types';
+import type { CollectionStatus, DashboardSnapshot, HistoryDeleteScope, WeekDigest } from '../types';
 
 declare global {
   interface Window {
@@ -41,5 +41,18 @@ export const bridge = {
   async deleteHistory(scope: HistoryDeleteScope): Promise<void> {
     if (isTauri()) await invoke('delete_history', { scope });
     else await delay(80);
+  },
+
+  /**
+   * Exports a Markdown report draft for the given week.
+   *
+   * There is no native `export_week_report` command yet — range digests are not wired to the
+   * Tauri backend (see `openhistory-digest` and `openhistory-demo`). Until that lands this takes
+   * the digest only to keep the call site's intent clear, and is a fixture-parity no-op so the
+   * button is exercisable without crashing a real build.
+   */
+  async exportWeekReport(digest: WeekDigest): Promise<void> {
+    void digest;
+    await delay(120);
   },
 };

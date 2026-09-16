@@ -112,6 +112,61 @@ pub fn open_history_window(app: AppHandle, segment_id: Option<String>) -> Result
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
+/// Opts a repository root into Git evidence collection and project resolution.
+///
+/// # Errors
+///
+/// Returns an error when the opt-in cannot be persisted.
+pub async fn add_repository(
+    root_path: String,
+    runtime: State<'_, crate::runtime::CollectorRuntime>,
+) -> Result<Vec<String>, String> {
+    runtime
+        .add_repository(&root_path)
+        .await
+        .map_err(|error| error.to_string())?;
+    runtime
+        .opted_in_repositories()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+/// Withdraws a repository from Git evidence collection and project resolution.
+///
+/// # Errors
+///
+/// Returns an error when the removal cannot be persisted.
+pub async fn remove_repository(
+    root_path: String,
+    runtime: State<'_, crate::runtime::CollectorRuntime>,
+) -> Result<Vec<String>, String> {
+    runtime
+        .remove_repository(&root_path)
+        .await
+        .map_err(|error| error.to_string())?;
+    runtime
+        .opted_in_repositories()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+/// Returns every opted-in repository root.
+///
+/// # Errors
+///
+/// Returns an error when the encrypted database cannot be read.
+pub fn list_repositories(
+    runtime: State<'_, crate::runtime::CollectorRuntime>,
+) -> Result<Vec<String>, String> {
+    runtime
+        .opted_in_repositories()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
 /// Emits a validated, explicitly scoped history-deletion request.
 ///
 /// # Errors

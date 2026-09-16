@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   CalendarDays,
+  CalendarRange,
   ChevronLeft,
   Download,
   Ellipsis,
@@ -13,18 +14,25 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react';
-import { dashboardFixture } from '../fixtures';
+import { dashboardFixture, weekDigestFixtures } from '../fixtures';
 import { bridge } from '../lib/bridge';
-import type { ActivitySegment, DashboardSnapshot, HistoryDeleteScope } from '../types';
+import type { ActivitySegment, DashboardSnapshot, HistoryDeleteScope, WeekDigest } from '../types';
 import { BrandMark } from '../components/BrandMark';
 import { DestructiveDialog } from '../components/DestructiveDialog';
 import { IconButton } from '../components/IconButton';
 import { SourceStack } from '../components/SourceStack';
 import { StatusBadge } from '../components/StatusBadge';
+import { WeekPane } from '../components/WeekPane';
 
-type FullSection = 'history' | 'settings';
+type FullSection = 'history' | 'week' | 'settings';
 
-export function FullHistoryView({ initial = dashboardFixture }: { initial?: DashboardSnapshot }) {
+export function FullHistoryView({
+  initial = dashboardFixture,
+  weeks = weekDigestFixtures,
+}: {
+  initial?: DashboardSnapshot;
+  weeks?: WeekDigest[];
+}) {
   const requestedSegment = new URLSearchParams(window.location.search).get('segment');
   const [section, setSection] = useState<FullSection>('history');
   const [query, setQuery] = useState('');
@@ -53,6 +61,11 @@ export function FullHistoryView({ initial = dashboardFixture }: { initial?: Dash
     setDeleteScope(undefined);
   };
 
+  const openSegmentFromWeek = (segmentId: string) => {
+    setSelectedId(segmentId);
+    setSection('history');
+  };
+
   return (
     <main className="history-shell" aria-label="OpenHistory full history">
       <aside className="sidebar">
@@ -68,6 +81,14 @@ export function FullHistoryView({ initial = dashboardFixture }: { initial?: Dash
             aria-current={section === 'history' ? 'page' : undefined}
           >
             <History size={17} aria-hidden="true" /> History
+          </button>
+          <button
+            className={section === 'week' ? 'nav-item is-active' : 'nav-item'}
+            type="button"
+            onClick={() => setSection('week')}
+            aria-current={section === 'week' ? 'page' : undefined}
+          >
+            <CalendarRange size={17} aria-hidden="true" /> Week
           </button>
           <button
             className={section === 'settings' ? 'nav-item is-active' : 'nav-item'}
@@ -86,6 +107,8 @@ export function FullHistoryView({ initial = dashboardFixture }: { initial?: Dash
 
       {section === 'settings' ? (
         <SettingsPanel snapshot={initial} onDelete={() => setDeleteScope('all')} />
+      ) : section === 'week' ? (
+        <WeekPane weeks={weeks} onOpenSegment={openSegmentFromWeek} />
       ) : (
         <>
           <section className="history-list-pane" aria-label="History results">

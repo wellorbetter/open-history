@@ -20,7 +20,10 @@ pub fn run() {
             dashboard::get_dashboard,
             dashboard::set_collection_status,
             dashboard::open_history_window,
-            dashboard::delete_history
+            dashboard::delete_history,
+            dashboard::add_repository,
+            dashboard::remove_repository,
+            dashboard::list_repositories
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]

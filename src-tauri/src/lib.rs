@@ -1,6 +1,7 @@
 //! Native `OpenHistory` application shell.
 
 mod dashboard;
+mod preferences;
 mod runtime;
 mod tray;
 
@@ -23,7 +24,9 @@ pub fn run() {
             dashboard::delete_history,
             dashboard::add_repository,
             dashboard::remove_repository,
-            dashboard::list_repositories
+            dashboard::list_repositories,
+            dashboard::get_tray_icon_style,
+            dashboard::set_tray_icon_style
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -36,7 +39,8 @@ pub fn run() {
             )
             .map_err(|error| std::io::Error::other(error.to_string()))?;
             app.manage(runtime);
-            tray::setup(app)?;
+            let tray_icon_style = preferences::load_tray_icon_style(&app.handle().clone());
+            tray::setup(app, tray_icon_style)?;
             Ok(())
         })
         .on_tray_icon_event(tray::handle_event)

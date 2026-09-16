@@ -1,5 +1,7 @@
 export type CollectionStatus = 'recording' | 'paused' | 'permission_needed' | 'error';
 
+export type TrayIconStyle = 'monochrome' | 'color';
+
 export type SourceKind = 'terminal' | 'editor' | 'browser' | 'agent' | 'document' | 'system';
 
 export interface ActivitySource {

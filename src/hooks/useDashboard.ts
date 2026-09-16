@@ -6,6 +6,8 @@ export interface DashboardState {
   snapshot?: DashboardSnapshot;
   loading: boolean;
   error?: string;
+  /** When `snapshot` was last fetched (or provided as a fixture), for display only. */
+  updatedAt?: Date;
   toggleCollection: () => Promise<void>;
   retry: () => void;
 }
@@ -14,6 +16,7 @@ export function useDashboard(initial?: DashboardSnapshot): DashboardState {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | undefined>(initial);
   const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState<string>();
+  const [updatedAt, setUpdatedAt] = useState<Date | undefined>(initial ? new Date() : undefined);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
@@ -24,6 +27,7 @@ export function useDashboard(initial?: DashboardSnapshot): DashboardState {
       .then((next) => {
         if (active) {
           setSnapshot(next);
+          setUpdatedAt(new Date());
           setError(undefined);
         }
       })
@@ -49,6 +53,7 @@ export function useDashboard(initial?: DashboardSnapshot): DashboardState {
     snapshot,
     loading,
     error,
+    updatedAt,
     toggleCollection,
     retry: () => {
       setLoading(true);

@@ -1,10 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { weekDigestFixtures } from '../src/fixtures';
+import { dashboardFixture, weekDigestFixtures } from '../src/fixtures';
 import { FullHistoryView } from '../src/routes/FullHistoryView';
 import { WeekPane } from '../src/components/WeekPane';
 
 function openWeek(weeks = weekDigestFixtures) {
-  render(<FullHistoryView weeks={structuredClone(weeks)} />);
+  render(
+    <FullHistoryView initial={structuredClone(dashboardFixture)} weeks={structuredClone(weeks)} />,
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Week' }));
 }
 

@@ -1,7 +1,14 @@
 use tauri::{
     App, AppHandle, Manager, PhysicalPosition,
+    image::Image,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
+
+/// A monochrome sparkle glyph on a transparent background, distinct from the
+/// full-color, fully-opaque app icon: macOS template mode discards color and
+/// keeps only alpha as a mask, so using the app icon there renders as a
+/// featureless solid block instead of a glyph.
+const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon.png");
 
 /// Creates the native notification-area icon.
 ///
@@ -12,9 +19,13 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
     let mut tray = TrayIconBuilder::with_id("openhistory")
         .tooltip("OpenHistory · Recording")
         .show_menu_on_left_click(false);
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
-    }
+    tray = match Image::from_bytes(TRAY_ICON_BYTES) {
+        Ok(icon) => tray.icon(icon),
+        Err(_) => match app.default_window_icon() {
+            Some(icon) => tray.icon(icon.clone()),
+            None => tray,
+        },
+    };
     #[cfg(target_os = "macos")]
     {
         tray = tray.icon_as_template(true);

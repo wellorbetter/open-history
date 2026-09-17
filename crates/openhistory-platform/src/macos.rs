@@ -24,16 +24,16 @@ use axuielement::{
     },
     is_process_trusted, is_process_trusted_with_prompt, system_wide,
 };
-use chrono::Local;
+use chrono::{DateTime, FixedOffset, Local};
 use openhistory_adapters::{AdapterError, EventSender};
-use openhistory_domain::{CaptureQuality, EventEnvelope, SemanticPayload};
+use openhistory_domain::{CaptureQuality, EventEnvelope, LifecycleBoundary, SemanticPayload};
 use openhistory_entities::Resolver;
 use openhistory_privacy::{CandidateContext, PolicyDecision, PrivacyPolicy};
 use tokio::sync::watch;
 
 use crate::{
     CaptureDetail, MAX_CONTEXT_CHARS, MAX_ROLE_CHARS, PlatformSnapshot, canonical_events,
-    minimized, source_identity,
+    minimized, presence_marker, source_identity,
 };
 
 const NOTIFICATIONS: &[&str] = &[
@@ -54,10 +54,17 @@ const FALLBACK_NOTIFICATIONS: &[&str] = &[
     AX_FOCUSED_UI_ELEMENT_CHANGED_NOTIFICATION,
 ];
 
+/// How often the foreground state is polled.
+const PROBE_INTERVAL: Duration = Duration::from_millis(750);
+
+/// How far the wall clock may run between two probes before the gap is read as suspension rather
+/// than scheduling jitter. Generous on purpose: a false suspension would wrongly void time the user
+/// really did spend, and only a suspended process can fall this far behind a 750ms timer.
+const SUSPENSION_THRESHOLD: chrono::Duration = chrono::Duration::seconds(30);
+
 pub(super) fn permission_granted() -> bool {
     is_process_trusted()
 }
-
 /// Shows the system Accessibility trust prompt when not already granted. Returns immediately,
 /// without prompting, if the process is already trusted.
 pub(super) fn request_permission() -> bool {
@@ -72,53 +79,66 @@ pub(super) async fn run_collector(
     resolver: Resolver,
     running: Arc<AtomicBool>,
 ) {
+    let mut recorder = Recorder {
+        sender,
+        detail,
+        policy,
+        resolver,
+        ticks: 0,
+    };
     let mut previous: Option<PlatformSnapshot> = None;
-    let mut ticks = 0_u64;
     let mut observed_pid = None;
     let mut stream: Option<AXNotificationStream> = None;
-    let mut probe = tokio::time::interval(Duration::from_millis(750));
+    let mut probe = tokio::time::interval(PROBE_INTERVAL);
     probe.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    // Collection starting is itself an observation: it marks everything before this instant as time
+    // this collector cannot speak for, so no earlier activity is credited with the gap.
+    if !recorder.mark(LifecycleBoundary::Resume, now()).await {
+        running.store(false, Ordering::Release);
+        return;
+    }
+
+    // The wall clock at the previous probe. The loop wakes every 750ms, so a far larger jump means
+    // the process was not running in between — the machine suspended. That is a real observation of
+    // absence, available without asking the system anything.
+    let mut last_probe = now();
+    let mut graceful = false;
 
     loop {
         tokio::select! {
             changed = stop.changed() => {
                 if changed.is_err() || *stop.borrow() {
+                    graceful = true;
                     break;
                 }
             }
             _ = probe.tick() => {
                 if !permission_granted() {
-                    let _ = sender.send(Err(AdapterError::PermissionRequired)).await;
+                    let _ = recorder.sender.send(Err(AdapterError::PermissionRequired)).await;
                     break;
                 }
+                let probed_at = now();
+                if suspended(last_probe, probed_at) {
+                    // Bracket the stretch nobody watched: alive at the last probe, alive again now.
+                    if !recorder.mark(LifecycleBoundary::Sleep, last_probe).await
+                        || !recorder.mark(LifecycleBoundary::Resume, probed_at).await
+                    {
+                        break;
+                    }
+                    // Nothing observed before the suspension can be compared against what is in
+                    // front of us now, so the next snapshot is treated as a fresh start.
+                    previous = None;
+                }
+                last_probe = probed_at;
                 let Ok((current, application)) = snapshot() else {
                     continue;
                 };
                 if current.process_id != observed_pid {
                     observed_pid = current.process_id;
-                    stream = application.as_ref().and_then(|element| {
-                        AXNotificationStream::subscribe_many(element, NOTIFICATIONS, 64)
-                            .or_else(|_| {
-                                AXNotificationStream::subscribe_many(
-                                    element,
-                                    FALLBACK_NOTIFICATIONS,
-                                    64,
-                                )
-                            })
-                            .ok()
-                    });
+                    stream = subscribe(application.as_ref());
                 }
-                let events = canonical_events(
-                    previous.as_ref(),
-                    &current,
-                    detail,
-                    &policy,
-                    &resolver,
-                    Local::now().fixed_offset(),
-                    ticks,
-                );
-                ticks = ticks.saturating_add(u64::try_from(events.len()).unwrap_or(u64::MAX));
-                if !send_all(&sender, events).await {
+                if !recorder.changes(previous.as_ref(), &current).await {
                     break;
                 }
                 previous = Some(current);
@@ -136,34 +156,106 @@ pub(super) async fn run_collector(
                 let Ok((current, _)) = snapshot() else {
                     continue;
                 };
-                let events = canonical_events(
-                    previous.as_ref(),
-                    &current,
-                    detail,
-                    &policy,
-                    &resolver,
-                    Local::now().fixed_offset(),
-                    ticks,
-                );
-                ticks = ticks.saturating_add(u64::try_from(events.len()).unwrap_or(u64::MAX));
-                if !send_all(&sender, events).await {
-                    break;
-                }
-                if detail >= CaptureDetail::Semantic
-                    && is_semantic_action(&event.notification)
-                    && let Some(action) = action_for_notification(&event.notification)
-                    && let Some(value) = semantic_action(&current, action, &policy, ticks)
+                if !recorder.changes(previous.as_ref(), &current).await
+                    || !recorder.semantic_action(&event.notification, &current).await
                 {
-                    ticks = ticks.saturating_add(1);
-                    if sender.send(Ok(value)).await.is_err() {
-                        break;
-                    }
+                    break;
                 }
                 previous = Some(current);
             }
         }
     }
+    // A collector that was asked to stop knows exactly when it stopped watching, so it says so and
+    // the last observation's attention ends here instead of running on to whatever is recorded next.
+    if graceful {
+        let _ = recorder.mark(LifecycleBoundary::Shutdown, now()).await;
+    }
     running.store(false, Ordering::Release);
+}
+
+fn now() -> DateTime<FixedOffset> {
+    Local::now().fixed_offset()
+}
+
+/// Everything needed to turn an observation into recorded events: where they go, how much detail is
+/// permitted, and the tick counter that keeps them ordered. These travel together through every
+/// branch of the collector, so they are one value rather than five parameters repeated at each site.
+struct Recorder {
+    sender: EventSender,
+    detail: CaptureDetail,
+    policy: PrivacyPolicy,
+    resolver: Resolver,
+    ticks: u64,
+}
+
+impl Recorder {
+    /// Records a presence marker, reporting whether the receiver is still listening.
+    async fn mark(&mut self, boundary: LifecycleBoundary, at: DateTime<FixedOffset>) -> bool {
+        self.ticks = self.ticks.saturating_add(1);
+        self.sender
+            .send(Ok(presence_marker(boundary, at, self.ticks)))
+            .await
+            .is_ok()
+    }
+
+    /// Records whatever changed between `previous` and `current`. The timer and the notification
+    /// stream both arrive at "something may have changed", so they decide what that means through
+    /// this one path rather than two copies of it that can drift apart.
+    async fn changes(
+        &mut self,
+        previous: Option<&PlatformSnapshot>,
+        current: &PlatformSnapshot,
+    ) -> bool {
+        let events = canonical_events(
+            previous,
+            current,
+            self.detail,
+            &self.policy,
+            &self.resolver,
+            now(),
+            self.ticks,
+        );
+        self.ticks = self
+            .ticks
+            .saturating_add(u64::try_from(events.len()).unwrap_or(u64::MAX));
+        send_all(&self.sender, events).await
+    }
+
+    /// Records the semantic action a notification stands for, when the configured detail level
+    /// allows one and privacy policy permits it. A notification carrying no reportable action is an
+    /// ordinary outcome, not a failure, so it still reports the receiver as listening.
+    async fn semantic_action(&mut self, notification: &str, current: &PlatformSnapshot) -> bool {
+        if self.detail < CaptureDetail::Semantic || !is_semantic_action(notification) {
+            return true;
+        }
+        let Some(action) = action_for_notification(notification) else {
+            return true;
+        };
+        let Some(value) = semantic_action(current, action, &self.policy, self.ticks) else {
+            return true;
+        };
+        self.ticks = self.ticks.saturating_add(1);
+        self.sender.send(Ok(value)).await.is_ok()
+    }
+}
+
+/// Observes one application, falling back to the smaller notification set when the full one is
+/// refused. No stream at all is a degraded but valid state: the probe timer still reports changes.
+fn subscribe(application: Option<&AXUIElement>) -> Option<AXNotificationStream> {
+    let element = application?;
+    AXNotificationStream::subscribe_many(element, NOTIFICATIONS, 64)
+        .or_else(|_| AXNotificationStream::subscribe_many(element, FALLBACK_NOTIFICATIONS, 64))
+        .ok()
+}
+
+/// Whether the wall clock ran further between two probes than a running process could have fallen
+/// behind a 750ms timer — which means it was not running, and the machine suspended.
+///
+/// Callers bracket the gap with `Sleep` at `last_probe` and `Resume` at `probed_at`: the machine went
+/// down at some unknown moment after that probe, so crediting attention only up to the probe itself
+/// never overstates it.
+fn suspended(last_probe: DateTime<FixedOffset>, probed_at: DateTime<FixedOffset>) -> bool {
+    probed_at.signed_duration_since(last_probe) > SUSPENSION_THRESHOLD
 }
 
 fn snapshot() -> Result<(PlatformSnapshot, Option<AXUIElement>), AdapterError> {
@@ -254,4 +346,44 @@ fn semantic_action(
             context,
         },
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PROBE_INTERVAL, suspended};
+    use chrono::{Duration, Local};
+
+    /// The gap that closes a segment has to be one only a stopped process could produce. Reading an
+    /// ordinary late tick as suspension would void time the user really did spend at the machine —
+    /// the same mistake as attributing a long read to idleness because a timer expired.
+    #[test]
+    fn only_a_gap_no_running_timer_could_produce_is_suspension() {
+        let probe = Duration::from_std(PROBE_INTERVAL).expect("the probe interval is a duration");
+        let last = Local::now().fixed_offset();
+
+        assert!(
+            !suspended(last, last + probe),
+            "a probe arriving exactly on time is not suspension"
+        );
+        assert!(
+            !suspended(last, last + probe * 20),
+            "twenty late ticks is a loaded machine, not a stopped one"
+        );
+        assert!(
+            !suspended(last, last + Duration::seconds(30)),
+            "the threshold itself is still jitter: only a longer gap counts"
+        );
+        assert!(
+            suspended(last, last + Duration::minutes(4)),
+            "four minutes behind a 750ms timer means the process was not running"
+        );
+    }
+
+    /// A clock that moved backwards between probes is not evidence the machine slept, and must not
+    /// be reported as a stretch nobody watched.
+    #[test]
+    fn a_clock_that_went_backwards_is_not_suspension() {
+        let last = Local::now().fixed_offset();
+        assert!(!suspended(last, last - Duration::hours(1)));
+    }
 }

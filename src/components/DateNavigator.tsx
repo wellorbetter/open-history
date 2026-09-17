@@ -1,14 +1,17 @@
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { shiftDay } from '../lib/day';
 import { IconButton } from './IconButton';
 
 export function DateNavigator({
   date,
   isToday,
   onReview,
+  onSelectDate,
 }: {
   date: string;
   isToday: boolean;
   onReview: () => void;
+  onSelectDate: (date: string) => void;
 }) {
   const value = new Date(`${date}T12:00:00`);
   // Pinned to 'en-US': the surrounding UI copy is English-only, so following the
@@ -27,10 +30,15 @@ export function DateNavigator({
         <h2>{heading}</h2>
       </div>
       <div className="date-actions">
-        <IconButton label="Previous day" quiet>
+        <IconButton label="Previous day" quiet onClick={() => onSelectDate(shiftDay(date, -1))}>
           <ChevronLeft size={18} />
         </IconButton>
-        <IconButton label="Next day" quiet disabled={isToday}>
+        <IconButton
+          label="Next day"
+          quiet
+          disabled={isToday}
+          onClick={() => onSelectDate(shiftDay(date, 1))}
+        >
           <ChevronRight size={18} />
         </IconButton>
         <button className="review-button" type="button" onClick={onReview}>

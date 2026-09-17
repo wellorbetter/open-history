@@ -96,7 +96,10 @@ fn is_template(style: TrayIconStyle) -> bool {
 /// Returns a Tauri error when the tray icon cannot be constructed.
 pub fn setup(app: &mut App, style: TrayIconStyle) -> tauri::Result<()> {
     let mut tray = TrayIconBuilder::with_id("openhistory")
-        .tooltip("OpenHistory · Recording")
+        // Just the name. This used to read "OpenHistory · Recording", set once at startup and never
+        // updated, so it went on claiming Recording while collection was paused or blocked on
+        // permission. The live status is in the panel this icon opens, and in both windows' badge.
+        .tooltip("OpenHistory")
         .show_menu_on_left_click(false)
         .icon(icon_for_style(&app.handle().clone(), style));
     #[cfg(target_os = "macos")]

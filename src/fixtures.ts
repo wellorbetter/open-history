@@ -53,9 +53,9 @@ export const timelineFixture: ActivitySegment[] = [
     start: '16:50',
     end: '17:10',
     durationMinutes: 20,
+    observedSeconds: 1200,
     sources: [terminal, editor, agent, browser, documentSource],
     state: 'current',
-    mergeCount: 2,
     category: 'Development',
     confidence: 'high',
     origin: 'native',
@@ -68,6 +68,7 @@ export const timelineFixture: ActivitySegment[] = [
     start: '16:40',
     end: '16:50',
     durationMinutes: 10,
+    observedSeconds: 600,
     sources: [terminal, editor, agent],
     state: 'complete',
     category: 'Development',
@@ -82,9 +83,9 @@ export const timelineFixture: ActivitySegment[] = [
     start: '16:20',
     end: '16:40',
     durationMinutes: 20,
+    observedSeconds: 1200,
     sources: [terminal, editor, agent, documentSource],
     state: 'complete',
-    mergeCount: 2,
     category: 'Planning',
     confidence: 'medium',
     origin: 'native',
@@ -101,6 +102,7 @@ export const timelineFixture: ActivitySegment[] = [
     start: '16:10',
     end: '16:20',
     durationMinutes: 10,
+    observedSeconds: 600,
     sources: [terminal, editor, agent],
     state: 'complete',
     category: 'Architecture',
@@ -115,6 +117,7 @@ export const timelineFixture: ActivitySegment[] = [
     start: '16:00',
     end: '16:10',
     durationMinutes: 10,
+    observedSeconds: 600,
     sources: [],
     state: 'private_gap',
     category: 'Private',
@@ -129,6 +132,7 @@ export const timelineFixture: ActivitySegment[] = [
     start: '15:50',
     end: '16:00',
     durationMinutes: 10,
+    observedSeconds: 600,
     sources: [terminal, editor, agent, browser],
     state: 'complete',
     category: 'Agent access',
@@ -148,7 +152,6 @@ export const weekDigestFixtures: WeekDigest[] = [
   {
     rangeStart: '2026-09-14',
     rangeEnd: '2026-09-20',
-    hasGeneratedText: false,
     workItems: [
       {
         projectId: 'open-history',
@@ -226,13 +229,11 @@ export const weekDigestFixtures: WeekDigest[] = [
   {
     rangeStart: '2026-09-07',
     rangeEnd: '2026-09-13',
-    hasGeneratedText: false,
     workItems: [],
   },
   {
     rangeStart: '2026-08-17',
     rangeEnd: '2026-08-23',
-    hasGeneratedText: false,
   },
 ];
 
@@ -243,10 +244,6 @@ export const dashboardFixture: DashboardSnapshot = {
   current: timelineFixture[0],
   timeline: timelineFixture,
   privacy: {
-    rawRetentionHours: 48,
-    excludedApplications: ['1Password', 'Keychain Access'],
-    localAiEnabled: false,
-    localApiEnabled: false,
-    mcpEnabled: false,
+    excludedApplications: ['1Password', 'Keychain Access', 'Passwords'],
   },
 };

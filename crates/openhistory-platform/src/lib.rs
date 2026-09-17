@@ -5,16 +5,17 @@
 //! keyboard input.
 
 use std::sync::{
-    Arc,
+    Arc, OnceLock,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
 use openhistory_adapters::{ActivityAdapter, AdapterError, EventSender};
 use openhistory_domain::{
-    AdapterKind, ApplicationIdentity, CaptureQuality, EntityKind, EventEnvelope, SemanticPayload,
-    SourceIdentity,
+    AdapterKind, ApplicationIdentity, CaptureQuality, EntityKind, EventEnvelope, LifecycleBoundary,
+    SemanticPayload, SourceIdentity,
 };
 use openhistory_entities::{ProjectRegistry, Resolver, WindowObservation};
 use openhistory_privacy::{CandidateContext, PolicyDecision, PrivacyPolicy};
@@ -158,12 +159,63 @@ pub fn canonical_events(
     events
 }
 
+/// Builds a presence marker: a timestamped statement about whether anything *could* have been
+/// observed, as opposed to what was.
+///
+/// Activity events are only recorded when something changes, which leaves every quiet interval
+/// ambiguous — a long gap means either sustained attention on one unchanging thing, or nobody
+/// present at all. Markers resolve that ambiguity with observed facts instead of a timeout: a
+/// closing boundary states that collection stopped at a known instant, and [`LifecycleBoundary::Resume`]
+/// states that it started again, leaving the interval between them explicitly unobserved.
+///
+/// Carries no application identity because it describes the collector, not a foreground app. The
+/// quality field never participates in confidence for these, since markers are excluded from
+/// segments' evidence.
+#[must_use]
+pub fn presence_marker(
+    boundary: LifecycleBoundary,
+    occurred_at: DateTime<FixedOffset>,
+    tick: u64,
+) -> EventEnvelope {
+    EventEnvelope::new(
+        occurred_at,
+        tick,
+        SourceIdentity {
+            source_id: run_id().to_owned(),
+            adapter: AdapterKind::MacOsAccessibility,
+            application: ApplicationIdentity {
+                display_name: None,
+                platform_id: None,
+                process_id: None,
+            },
+        },
+        CaptureQuality::ApplicationOnly,
+        SemanticPayload::Lifecycle(boundary),
+    )
+}
+
+/// Identifies this collector run, shared by every event it emits.
+///
+/// Ordering treats one `source_id` as one counter of ticks and clamps a timestamp that moves
+/// backwards within it, which is right for a clock that rolled back and wrong for a restart, where
+/// a new process begins counting from zero again. Naming the run keeps each run's ticks in their own
+/// sequence, so a restart is never read as a clock going backwards. Naming the watched application
+/// instead did the opposite: it split one tick counter across every application on screen, and
+/// merged separate runs into whichever bucket their timestamps happened to land in.
+fn run_id() -> &'static str {
+    static RUN: OnceLock<String> = OnceLock::new();
+    RUN.get_or_init(|| {
+        let started = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis());
+        format!("macos-accessibility:{}-{started}", std::process::id())
+    })
+    .as_str()
+}
+
 fn source_identity(snapshot: &PlatformSnapshot) -> SourceIdentity {
     SourceIdentity {
-        source_id: snapshot.process_id.map_or_else(
-            || "macos-accessibility:unknown".to_owned(),
-            |pid| format!("macos-accessibility:{pid}"),
-        ),
+        source_id: run_id().to_owned(),
         adapter: AdapterKind::MacOsAccessibility,
         application: ApplicationIdentity {
             display_name: minimized(snapshot.application.as_deref(), MAX_APPLICATION_CHARS),

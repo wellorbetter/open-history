@@ -1,14 +1,19 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { dashboardFixture } from '../fixtures';
 import type {
+  CaptureGranularity,
   CollectionStatus,
   DashboardSnapshot,
   HistoryDeleteScope,
+  Interpretation,
+  TimelineBucket,
   TrayIconStyle,
-  WeekDigest,
 } from '../types';
 
 const TRAY_ICON_STYLE_FIXTURE_KEY = 'openhistory-tray-icon-style-fixture';
+const CAPTURE_GRANULARITY_FIXTURE_KEY = 'openhistory-capture-granularity-fixture';
+const TIMELINE_BUCKET_FIXTURE_KEY = 'openhistory-timeline-bucket-fixture';
 
 declare global {
   interface Window {
@@ -22,8 +27,14 @@ const delay = (milliseconds = 80) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 
 export const bridge = {
-  async snapshot(): Promise<DashboardSnapshot> {
-    if (isTauri()) return invoke<DashboardSnapshot>('get_dashboard');
+  /**
+   * Reads one local day's projection. `date` is `YYYY-MM-DD`; omitted means today.
+   *
+   * The fixture route answers with today's fixture whatever day is asked for, and says so through
+   * `selectedDate` so a surface never captions it with a day it does not hold.
+   */
+  async snapshot(date?: string): Promise<DashboardSnapshot> {
+    if (isTauri()) return invoke<DashboardSnapshot>('get_dashboard', { date });
     await delay();
     return structuredClone(dashboardFixture);
   },
@@ -46,22 +57,46 @@ export const bridge = {
     window.dispatchEvent(new PopStateEvent('popstate'));
   },
 
-  async deleteHistory(scope: HistoryDeleteScope): Promise<void> {
-    if (isTauri()) await invoke('delete_history', { scope });
-    else await delay(80);
+  /**
+   * Asks a coding agent installed on this Mac what one timeline row was about.
+   *
+   * Only ever called from an explicit click: the agent is a CLI the user signed in themselves, and
+   * it sends the row's evidence to that agent's vendor. Outside the native app there is no agent to
+   * ask, so this rejects rather than inventing an answer the fixtures could not have produced.
+   */
+  async interpretActivity(segmentId: string, date?: string): Promise<Interpretation> {
+    if (isTauri()) return invoke<Interpretation>('interpret_activity', { segmentId, date });
+    await delay(200);
+    throw new Error('a coding agent can only be asked from the desktop app');
+  },
+
+  /** Deletes the given span from encrypted storage, returning how many raw events were removed. */
+  async deleteHistory(scope: HistoryDeleteScope): Promise<number> {
+    if (isTauri()) return invoke<number>('delete_history', { scope });
+    await delay(80);
+    return 0;
   },
 
   /**
-   * Exports a Markdown report draft for the given week.
+   * Subscribes to the task the tray asked the history window to show, returning an unsubscribe.
    *
-   * There is no native `export_week_report` command yet — range digests are not wired to the
-   * Tauri backend (see `openhistory-digest` and `openhistory-demo`). Until that lands this takes
-   * the digest only to keep the call site's intent clear, and is a fixture-parity no-op so the
-   * button is exercisable without crashing a real build.
+   * The backend has always emitted this when a compact row is clicked, and nothing listened, so the
+   * window came up on whatever happened to be selected before — the one task the user did not ask
+   * for. Outside the native app there is no event bus and the surface reads the id from the URL
+   * instead, so this subscribes to nothing and says so by returning a no-op.
    */
-  async exportWeekReport(digest: WeekDigest): Promise<void> {
-    void digest;
-    await delay(120);
+  onOpenSegment(handler: (segmentId: string) => void): () => void {
+    if (!isTauri()) return () => {};
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void listen<string>('open-segment', (event) => handler(event.payload)).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   },
 
   /**
@@ -82,5 +117,37 @@ export const bridge = {
     await delay(40);
     window.localStorage.setItem(TRAY_ICON_STYLE_FIXTURE_KEY, style);
     return style;
+  },
+
+  /** Reads how much detail collection records per observation. */
+  async getCaptureGranularity(): Promise<CaptureGranularity> {
+    if (isTauri()) return invoke<CaptureGranularity>('get_capture_granularity');
+    await delay(20);
+    const stored = window.localStorage.getItem(CAPTURE_GRANULARITY_FIXTURE_KEY);
+    return stored === 'application' || stored === 'semantic' ? stored : 'window';
+  },
+
+  async setCaptureGranularity(granularity: CaptureGranularity): Promise<CaptureGranularity> {
+    if (isTauri()) return invoke<CaptureGranularity>('set_capture_granularity', { granularity });
+    await delay(40);
+    window.localStorage.setItem(CAPTURE_GRANULARITY_FIXTURE_KEY, granularity);
+    return granularity;
+  },
+
+  /** Reads the fixed window the day timeline is grouped into. */
+  async getTimelineBucket(): Promise<TimelineBucket> {
+    if (isTauri()) return invoke<TimelineBucket>('get_timeline_bucket');
+    await delay(20);
+    const stored = window.localStorage.getItem(TIMELINE_BUCKET_FIXTURE_KEY);
+    return stored === 'five_minutes' || stored === 'thirty_minutes' || stored === 'one_hour'
+      ? stored
+      : 'ten_minutes';
+  },
+
+  async setTimelineBucket(bucket: TimelineBucket): Promise<TimelineBucket> {
+    if (isTauri()) return invoke<TimelineBucket>('set_timeline_bucket', { bucket });
+    await delay(40);
+    window.localStorage.setItem(TIMELINE_BUCKET_FIXTURE_KEY, bucket);
+    return bucket;
   },
 };

@@ -8,22 +8,41 @@ export interface DashboardState {
   error?: string;
   /** When `snapshot` was last fetched (or provided as a fixture), for display only. */
   updatedAt?: Date;
+  /** Encrypted storage has not been opened yet, so nothing has been read rather than nothing exists. */
+  unlocking: boolean;
+  /**
+   * Why the last action the user took did not happen, if it didn't.
+   *
+   * Separate from `error`, which is about the read failing and replaces the whole surface. A refused
+   * pause leaves a perfectly good day on screen; the only thing wrong is that the button did nothing,
+   * and that has to be said next to the button rather than instead of the history.
+   */
+  actionError?: string;
   toggleCollection: () => Promise<void>;
   retry: () => void;
 }
 
-export function useDashboard(initial?: DashboardSnapshot): DashboardState {
+/**
+ * Reads one local day's projection and keeps it fresh.
+ *
+ * `date` is `YYYY-MM-DD`; leaving it out asks for today, and keeps asking for today, so a surface
+ * left open overnight follows the date rather than freezing on the day it was opened. While a newly
+ * requested day is in flight the previous one stays on screen — it is captioned with its own
+ * `selectedDate`, so what is shown never disagrees with what it says it is.
+ */
+export function useDashboard(initial?: DashboardSnapshot, date?: string): DashboardState {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | undefined>(initial);
   const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState<string>();
   const [updatedAt, setUpdatedAt] = useState<Date | undefined>(initial ? new Date() : undefined);
+  const [actionError, setActionError] = useState<string>();
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (initial) return;
     let active = true;
     bridge
-      .snapshot()
+      .snapshot(date)
       .then((next) => {
         if (active) {
           setSnapshot(next);
@@ -40,13 +59,52 @@ export function useDashboard(initial?: DashboardSnapshot): DashboardState {
     return () => {
       active = false;
     };
-  }, [initial, reload]);
+  }, [date, initial, reload]);
+
+  // Collection keeps running while a window is hidden, so a snapshot taken when the window first
+  // loaded is stale by the time it is looked at again. Refetch whenever this surface becomes
+  // visible or focused — which for the tray panel is exactly when it is opened — and keep a slow
+  // poll going while it stays on screen.
+  useEffect(() => {
+    if (initial) return;
+    const refresh = () => setReload((value) => value + 1);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    const timer = window.setInterval(refreshWhenVisible, 15_000);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.clearInterval(timer);
+    };
+  }, [initial]);
+
+  // Storage opens after the window does, and it can be waiting behind a keychain prompt for as
+  // long as the user takes to answer it. Poll quickly until it is open, so the day appears as soon
+  // as it can be read instead of at the next slow refresh.
+  useEffect(() => {
+    if (initial || snapshot?.storageReady !== false) return;
+    const timer = window.setTimeout(() => setReload((value) => value + 1), 700);
+    return () => window.clearTimeout(timer);
+  }, [initial, snapshot]);
 
   const toggleCollection = useCallback(async () => {
     if (!snapshot) return;
     const next: CollectionStatus = snapshot.status === 'recording' ? 'paused' : 'recording';
-    const status = await bridge.setCollectionStatus(next);
-    setSnapshot((current) => (current ? { ...current, status } : current));
+    // The backend really does refuse this — when permission has been revoked, and while storage is
+    // still unlocking. Unhandled, the rejection left the button looking broken: nothing moved and
+    // nothing explained why.
+    try {
+      const status = await bridge.setCollectionStatus(next);
+      setSnapshot((current) => (current ? { ...current, status } : current));
+      setActionError(undefined);
+    } catch (reason) {
+      setActionError(
+        reason instanceof Error ? reason.message : 'Collection could not be changed just now',
+      );
+    }
   }, [snapshot]);
 
   return {
@@ -54,6 +112,8 @@ export function useDashboard(initial?: DashboardSnapshot): DashboardState {
     loading,
     error,
     updatedAt,
+    unlocking: snapshot?.storageReady === false,
+    actionError,
     toggleCollection,
     retry: () => {
       setLoading(true);

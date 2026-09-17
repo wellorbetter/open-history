@@ -1,0 +1,4 @@
+# Route macOS launches through the signing wrapper so each rebuild keeps the same code signing
+# identity, and the Keychain approval for the database key survives it. See scripts/sign-and-run.sh.
+[target.'cfg(target_os = "macos")']
+runner = "scripts/sign-and-run.sh"

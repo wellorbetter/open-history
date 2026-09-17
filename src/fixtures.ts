@@ -56,7 +56,6 @@ export const timelineFixture: ActivitySegment[] = [
     observedSeconds: 1200,
     sources: [terminal, editor, agent, browser, documentSource],
     state: 'current',
-    mergeCount: 2,
     category: 'Development',
     confidence: 'high',
     origin: 'native',
@@ -87,7 +86,6 @@ export const timelineFixture: ActivitySegment[] = [
     observedSeconds: 1200,
     sources: [terminal, editor, agent, documentSource],
     state: 'complete',
-    mergeCount: 2,
     category: 'Planning',
     confidence: 'medium',
     origin: 'native',
@@ -154,7 +152,6 @@ export const weekDigestFixtures: WeekDigest[] = [
   {
     rangeStart: '2026-09-14',
     rangeEnd: '2026-09-20',
-    hasGeneratedText: false,
     workItems: [
       {
         projectId: 'open-history',
@@ -232,13 +229,11 @@ export const weekDigestFixtures: WeekDigest[] = [
   {
     rangeStart: '2026-09-07',
     rangeEnd: '2026-09-13',
-    hasGeneratedText: false,
     workItems: [],
   },
   {
     rangeStart: '2026-08-17',
     rangeEnd: '2026-08-23',
-    hasGeneratedText: false,
   },
 ];
 
@@ -249,9 +244,6 @@ export const dashboardFixture: DashboardSnapshot = {
   current: timelineFixture[0],
   timeline: timelineFixture,
   privacy: {
-    excludedApplications: ['1Password', 'Keychain Access'],
-    localAiEnabled: false,
-    localApiEnabled: false,
-    mcpEnabled: false,
+    excludedApplications: ['1Password', 'Keychain Access', 'Passwords'],
   },
 };

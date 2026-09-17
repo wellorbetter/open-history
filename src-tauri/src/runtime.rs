@@ -22,6 +22,14 @@ use tokio::{sync::Mutex as AsyncMutex, task::JoinHandle};
 
 use crate::dashboard::{CollectionStatus, DashboardState, HistoryScope};
 
+/// Applications never recorded, whatever the capture detail.
+///
+/// Public and shared with the dashboard projection on purpose: the settings card tells the user
+/// which applications are excluded, and it used to do that from its own hand-written copy of this
+/// list — a copy that was already one entry out of date. One list means the card cannot claim an
+/// exclusion that is not installed, or omit one that is.
+pub const EXCLUDED_APPLICATIONS: [&str; 3] = ["1Password", "Keychain Access", "Passwords"];
+
 /// Owns the privileged adapter, bounded writer, and encrypted local database.
 pub struct CollectorRuntime {
     adapter: AsyncMutex<PlatformAdapter>,
@@ -45,11 +53,7 @@ impl CollectorRuntime {
         let mut adapter = PlatformAdapter::default();
         adapter.set_capture_detail(detail);
         adapter.set_privacy_policy(PrivacyPolicy {
-            applications: vec![
-                "1Password".to_owned(),
-                "Keychain Access".to_owned(),
-                "Passwords".to_owned(),
-            ],
+            applications: EXCLUDED_APPLICATIONS.map(str::to_owned).to_vec(),
             ..PrivacyPolicy::default()
         });
         Self {

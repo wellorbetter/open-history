@@ -570,6 +570,19 @@ button.current-card:active {
   font-size: 10px;
 }
 
+/* Sits under the compact header when an action the user took was refused. Styled as a notice rather
+   than an empty state: the history below it is still good, only the button did nothing. */
+.action-error {
+  margin: 0 17px 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--danger-border, rgba(176, 58, 46, 0.28));
+  border-radius: 7px;
+  background: var(--danger-surface, rgba(176, 58, 46, 0.07));
+  color: var(--danger-text, #8c2f26);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .empty-timeline,
 .empty-results,
 .feedback-state,

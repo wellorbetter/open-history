@@ -36,8 +36,12 @@ export function DestructiveDialog({
         <p className="eyebrow eyebrow--danger">Delete history</p>
         <h2 id="delete-title">Delete {scopeLabels[scope]}?</h2>
         <p id="delete-description">
-          Raw events, task segments, summaries, search entries, and managed temporary exports in
-          this range will be removed. This cannot be undone.
+          {/* Only the two tables that exist are named. This used to also promise summaries, search
+              entries and managed exports; summaries are derived on read and never stored, there is
+              no search index, and the app writes no exports — so three quarters of the sentence
+              described deleting things that were never there. */}
+          The raw events in this range, and the task segments built from them, will be removed from
+          this device. This cannot be undone.
         </p>
         <div className="dialog-actions">
           <button ref={cancelRef} className="secondary-button" type="button" onClick={onCancel}>

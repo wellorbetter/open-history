@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { dashboardFixture } from '../fixtures';
 import type {
   CaptureGranularity,
@@ -8,7 +9,6 @@ import type {
   Interpretation,
   TimelineBucket,
   TrayIconStyle,
-  WeekDigest,
 } from '../types';
 
 const TRAY_ICON_STYLE_FIXTURE_KEY = 'openhistory-tray-icon-style-fixture';
@@ -78,16 +78,25 @@ export const bridge = {
   },
 
   /**
-   * Exports a Markdown report draft for the given week.
+   * Subscribes to the task the tray asked the history window to show, returning an unsubscribe.
    *
-   * There is no native `export_week_report` command yet — range digests are not wired to the
-   * Tauri backend (see `openhistory-digest` and `openhistory-demo`). Until that lands this takes
-   * the digest only to keep the call site's intent clear, and is a fixture-parity no-op so the
-   * button is exercisable without crashing a real build.
+   * The backend has always emitted this when a compact row is clicked, and nothing listened, so the
+   * window came up on whatever happened to be selected before — the one task the user did not ask
+   * for. Outside the native app there is no event bus and the surface reads the id from the URL
+   * instead, so this subscribes to nothing and says so by returning a no-op.
    */
-  async exportWeekReport(digest: WeekDigest): Promise<void> {
-    void digest;
-    await delay(120);
+  onOpenSegment(handler: (segmentId: string) => void): () => void {
+    if (!isTauri()) return () => {};
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void listen<string>('open-segment', (event) => handler(event.payload)).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   },
 
   /**

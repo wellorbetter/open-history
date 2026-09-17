@@ -4,13 +4,11 @@ import {
   CalendarX,
   ChevronLeft,
   ChevronRight,
-  Download,
   FileClock,
   GitCommit,
   ShieldCheck,
   Video,
 } from 'lucide-react';
-import { bridge } from '../lib/bridge';
 import type { WeekDigest, WorkEvidence, WorkItem } from '../types';
 import { IconButton } from './IconButton';
 
@@ -25,11 +23,6 @@ function weekRangeLabel(rangeStart: string, rangeEnd: string) {
   return `${format(rangeStart)} – ${format(rangeEnd)}`;
 }
 
-/** A week is outside the retention window when its range fully precedes today's retained period. */
-function isOutsideRetention(digest: WeekDigest) {
-  return digest.workItems === undefined;
-}
-
 export function WeekPane({
   weeks,
   onOpenSegment,
@@ -38,23 +31,41 @@ export function WeekPane({
   onOpenSegment: (segmentId: string) => void;
 }) {
   const [weekIndex, setWeekIndex] = useState(0);
-  const [exportState, setExportState] = useState<'idle' | 'exporting' | 'done'>('idle');
   const digest = weeks[weekIndex];
-  const workItems = digest.workItems ?? [];
+  const workItems = digest?.workItems ?? [];
   const [selectedId, setSelectedId] = useState<string | undefined>(workItems[0]?.projectId);
   const selected = workItems.find((item) => item.projectId === selectedId) ?? workItems[0];
-
-  const exportReport = async () => {
-    setExportState('exporting');
-    await bridge.exportWeekReport(digest);
-    setExportState('done');
-  };
 
   const selectWeek = (nextIndex: number) => {
     setWeekIndex(nextIndex);
     setSelectedId(weeks[nextIndex].workItems?.[0]?.projectId);
-    setExportState('idle');
   };
+
+  // Nothing in this app aggregates a week yet, so with no digest to show there is nothing to page
+  // through and no range to caption. Saying that is the only honest thing this pane can do; the
+  // alternative it replaced was rendering the design fixtures as if they were the user's own week.
+  if (!digest) {
+    return (
+      <section className="history-list-pane" aria-label="Week results">
+        <header className="history-toolbar">
+          <div>
+            <p className="eyebrow">Week</p>
+            <h1>No weekly digest</h1>
+          </div>
+        </header>
+        <div className="history-results">
+          <div className="empty-results">
+            <CalendarX size={22} aria-hidden="true" />
+            <strong>Weeks are not aggregated yet</strong>
+            <span>
+              Your day timeline is recorded and kept. Rolling it up into a week — commits, agent
+              sessions and meetings per project — is not built, so there is nothing to show here.
+            </span>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <>
@@ -85,15 +96,7 @@ export function WeekPane({
         </header>
 
         <div className="history-results" aria-live="polite">
-          {isOutsideRetention(digest) ? (
-            <div className="empty-results">
-              <CalendarX size={22} aria-hidden="true" />
-              <strong>Outside the retention window</strong>
-              <span>
-                This week's raw evidence has already been deleted under your retention settings.
-              </span>
-            </div>
-          ) : workItems.length ? (
+          {workItems.length ? (
             workItems.map((item) => (
               <WorkItemCard
                 key={item.projectId}
@@ -110,25 +113,6 @@ export function WeekPane({
             </div>
           )}
         </div>
-
-        <footer className="week-export">
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={
-              isOutsideRetention(digest) || !workItems.length || exportState === 'exporting'
-            }
-            onClick={() => void exportReport()}
-          >
-            <Download size={15} aria-hidden="true" />
-            {exportState === 'done' ? 'Exported' : 'Export report draft'}
-          </button>
-          <span className="setting-note">
-            {digest.hasGeneratedText
-              ? 'Includes model-generated text, marked in the export.'
-              : 'No generated text included.'}
-          </span>
-        </footer>
       </section>
 
       <WorkItemInspector item={selected} onOpenEvidence={onOpenSegment} />

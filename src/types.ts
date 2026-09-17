@@ -17,7 +17,12 @@ export interface ActivitySource {
 
 export interface SummaryRevision {
   id: string;
-  author: 'deterministic' | 'ai' | 'user';
+  /**
+   * Always deterministic. Nothing in this app writes any other kind of revision — there is no
+   * editing control and no command that could persist one — so the union no longer offers authors
+   * that would never appear.
+   */
+  author: 'deterministic';
   engine?: string;
   createdAt: string;
   title: string;
@@ -35,7 +40,6 @@ export interface ActivitySegment {
   observedSeconds: number;
   sources: ActivitySource[];
   state: 'current' | 'complete' | 'private_gap';
-  mergeCount?: number;
   category: string;
   confidence: 'high' | 'medium' | 'low';
   origin: 'native' | 'browser' | 'imported';
@@ -44,9 +48,6 @@ export interface ActivitySegment {
 
 export interface PrivacySettings {
   excludedApplications: string[];
-  localAiEnabled: boolean;
-  localApiEnabled: boolean;
-  mcpEnabled: boolean;
 }
 
 export interface DashboardSnapshot {
@@ -103,8 +104,5 @@ export interface WorkItem {
 export interface WeekDigest {
   rangeStart: string;
   rangeEnd: string;
-  /** Absent when the range has no retained data at all, as opposed to zero activity. */
   workItems?: WorkItem[];
-  /** True when a summary in this digest was written by a model rather than deterministically. */
-  hasGeneratedText: boolean;
 }

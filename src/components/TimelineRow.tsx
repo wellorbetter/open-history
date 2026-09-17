@@ -31,11 +31,7 @@ export function TimelineRow({
         <span className="timeline-sources">
           <SourceStack sources={segment.sources} max={3} />
         </span>
-        <span className="timeline-result">
-          {segment.mergeCount
-            ? `${segment.mergeCount} merged`
-            : formatObservedDuration(segment.observedSeconds)}
-        </span>
+        <span className="timeline-result">{formatObservedDuration(segment.observedSeconds)}</span>
       </button>
     </li>
   );

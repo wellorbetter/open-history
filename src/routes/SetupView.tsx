@@ -1,4 +1,4 @@
-import { ArrowRight, EyeOff, HardDrive, KeyboardOff, MicOff, MonitorOff } from 'lucide-react';
+import { EyeOff, HardDrive, KeyboardOff, MicOff, MonitorOff } from 'lucide-react';
 import { BrandMark } from '../components/BrandMark';
 
 export function SetupView() {
@@ -15,8 +15,12 @@ export function SetupView() {
         <div className="privacy-promise">
           <Promise
             icon={<HardDrive />}
-            title="Local only"
-            text="No account, cloud processing, or telemetry."
+            title="Stored only here"
+            // Not "no cloud processing": asking a coding agent to read a row back sends that row's
+            // window titles to the agent's vendor. It takes an explicit click and nothing else in
+            // the app leaves the machine, but an unqualified promise here would be contradicted by
+            // a feature two screens away.
+            text="No account and no telemetry. Nothing leaves this Mac unless you ask an agent to read a row back."
           />
           <Promise icon={<MonitorOff />} title="No screenshots" text="Pixels are never captured." />
           <Promise icon={<MicOff />} title="No audio" text="Microphones are never accessed." />
@@ -28,11 +32,11 @@ export function SetupView() {
         </div>
         <div className="setup-note">
           <EyeOff size={17} aria-hidden="true" />
-          Password managers and private browser contexts are excluded before persistence.
+          {/* The private-browsing half of this claim was removed: the policy can exclude a private
+              context, but nothing ever reports one — there is no browser adapter, and both callers
+              pass `private_context: false`. Password-manager exclusion is real and enforced. */}
+          Password managers are excluded before anything is written to disk.
         </div>
-        <button className="primary-button" type="button">
-          Continue to permission setup <ArrowRight size={17} aria-hidden="true" />
-        </button>
       </section>
     </main>
   );

@@ -5,8 +5,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  Download,
-  Ellipsis,
   FileClock,
   Gauge,
   History,
@@ -17,9 +15,9 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react';
-import { weekDigestFixtures } from '../fixtures';
 import { useDashboard } from '../hooks/useDashboard';
 import { bridge } from '../lib/bridge';
+import { localDay, shiftDay } from '../lib/day';
 import { describeObservedDuration, formatObservedDuration } from '../lib/duration';
 import type {
   ActivitySegment,
@@ -43,7 +41,10 @@ type FullSection = 'history' | 'week' | 'settings';
 
 export function FullHistoryView({
   initial,
-  weeks = weekDigestFixtures,
+  // Empty by default, because nothing in this app produces a week digest yet. This used to default
+  // to the design fixtures, and since the native window renders `<FullHistoryView />` with no props,
+  // every user was shown invented commits, meetings and attention minutes as their own history.
+  weeks = [],
 }: {
   initial?: DashboardSnapshot;
   weeks?: WeekDigest[];
@@ -73,27 +74,6 @@ export function FullHistoryView({
       onSelectDate={setDate}
     />
   );
-}
-
-/** Today, as the local `YYYY-MM-DD` the backend also speaks. */
-function localDay(at: Date) {
-  return [
-    at.getFullYear(),
-    String(at.getMonth() + 1).padStart(2, '0'),
-    String(at.getDate()).padStart(2, '0'),
-  ].join('-');
-}
-
-/**
- * Moves a `YYYY-MM-DD` day by whole days.
- *
- * Arithmetic happens at midday so that a daylight-saving change, which shortens or lengthens one
- * local day, cannot make "the day before" land back on the same date.
- */
-function shiftDay(date: string, days: number) {
-  const at = new Date(`${date}T12:00:00`);
-  at.setDate(at.getDate() + days);
-  return localDay(at);
 }
 
 function LoadedFullHistoryView({
@@ -133,6 +113,17 @@ function LoadedFullHistoryView({
   }, [deleted, initial.timeline, query]);
 
   const selected = segments.find((segment) => segment.id === selectedId) ?? segments[0];
+
+  // A click on a compact timeline row names a task. Honour it whichever section is open, so the
+  // window it raises shows what was clicked rather than what was last looked at.
+  useEffect(
+    () =>
+      bridge.onOpenSegment((segmentId) => {
+        setSelectedId(segmentId);
+        setSection('history');
+      }),
+    [],
+  );
 
   const confirmDelete = async () => {
     if (!deleteScope) return;
@@ -239,12 +230,15 @@ function LoadedFullHistoryView({
             </header>
             <label className="search-field">
               <Search size={16} aria-hidden="true" />
-              <span className="sr-only">Search history</span>
+              {/* Named for what it does. This filters the day already on screen, in the browser;
+                  there is no index behind it and no command that searches other days, so calling it
+                  "Search history" sent people looking for last week's phrases here. */}
+              <span className="sr-only">Filter this day</span>
               <input
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search tasks and summaries"
+                placeholder="Filter this day's tasks"
               />
             </label>
             <div className="history-results" aria-live="polite">
@@ -412,11 +406,6 @@ function TaskInspector({
     <section className="inspector" aria-label={`Details for ${segment.title}`}>
       <header className="inspector-header">
         <span className="category-pill">{segment.category}</span>
-        <div>
-          <IconButton label="More task actions" quiet>
-            <Ellipsis size={18} />
-          </IconButton>
-        </div>
       </header>
       <h2>{segment.title}</h2>
       <p className="inspector-time">
@@ -453,21 +442,15 @@ function TaskInspector({
       <div className="inspector-section revision-card">
         <div>
           <Sparkles size={15} aria-hidden="true" />
-          <strong>
-            {revision?.author === 'deterministic' ? 'Deterministic revision' : 'Edited revision'}
-          </strong>
+          {/* Every revision this app writes is deterministic — nothing edits one, and there is no
+              command that could. So it is stated flatly rather than chosen between two labels, one
+              of which was unreachable. */}
+          <strong>Deterministic revision</strong>
         </div>
-        <span>
-          {revision?.createdAt
-            ? new Date(revision.createdAt).toLocaleString('en-US')
-            : 'Available offline'}
-        </span>
+        {revision?.createdAt && <span>{new Date(revision.createdAt).toLocaleString('en-US')}</span>}
       </div>
 
       <footer className="inspector-actions">
-        <button className="secondary-button" type="button">
-          <Download size={15} aria-hidden="true" /> Export
-        </button>
         {/* Deletion is expressed as "everything since a moment", so the only day it can remove is
             the current one. Offering it from a past day would delete a different day than the one
             being looked at. */}
@@ -513,26 +496,16 @@ function SettingsPanel({
               false and the control it was attached to persisted nothing. Saying so is the only
               version of this card that is true today. */}
           <p className="setting-note">
-            Excluded by default: {snapshot.privacy.excludedApplications.join(', ')}
+            Never recorded: {snapshot.privacy.excludedApplications.join(', ')}
           </p>
         </SettingsCard>
 
-        <SettingsCard
-          icon={<Sparkles size={19} />}
-          title="On-device summaries"
-          description="Deterministic summaries always work offline. Local model enrichment is optional."
-        >
-          <ToggleRow label="Use an on-device model" checked={snapshot.privacy.localAiEnabled} />
-        </SettingsCard>
-
-        <SettingsCard
-          icon={<FileClock size={19} />}
-          title="Agent access"
-          description="Approve read-only local clients independently from collection."
-        >
-          <ToggleRow label="Loopback API" checked={snapshot.privacy.localApiEnabled} />
-          <ToggleRow label="MCP companion" checked={snapshot.privacy.mcpEnabled} />
-        </SettingsCard>
+        {/* An "On-device summaries" card and an "Agent access" card used to sit here, offering
+            switches for a local model, a loopback API and an MCP companion. None of the three was
+            connected to anything: the checkboxes had no change handler, no command existed to
+            persist them, no HTTP listener is built, and the MCP binary only prints a line and
+            exits. They are gone rather than disabled, because a disabled switch still promises the
+            feature is there and merely turned off. */}
 
         <SettingsCard
           icon={<Clock size={19} />}
@@ -561,7 +534,7 @@ function SettingsPanel({
         <SettingsCard
           icon={<Trash2 size={19} />}
           title="Delete local history"
-          description="Remove raw events, summaries, indexes, and managed exports."
+          description="Removes the raw events and the task segments built from them."
           danger
         >
           <p className="setting-note">
@@ -733,14 +706,5 @@ function SettingsCard({
       </div>
       <div className="settings-card-body">{children}</div>
     </section>
-  );
-}
-
-function ToggleRow({ label, checked }: { label: string; checked: boolean }) {
-  return (
-    <label className="toggle-row">
-      <span>{label}</span>
-      <input type="checkbox" defaultChecked={checked} />
-    </label>
   );
 }

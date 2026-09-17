@@ -347,3 +347,43 @@ fn semantic_action(
         },
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{PROBE_INTERVAL, suspended};
+    use chrono::{Duration, Local};
+
+    /// The gap that closes a segment has to be one only a stopped process could produce. Reading an
+    /// ordinary late tick as suspension would void time the user really did spend at the machine —
+    /// the same mistake as attributing a long read to idleness because a timer expired.
+    #[test]
+    fn only_a_gap_no_running_timer_could_produce_is_suspension() {
+        let probe = Duration::from_std(PROBE_INTERVAL).expect("the probe interval is a duration");
+        let last = Local::now().fixed_offset();
+
+        assert!(
+            !suspended(last, last + probe),
+            "a probe arriving exactly on time is not suspension"
+        );
+        assert!(
+            !suspended(last, last + probe * 20),
+            "twenty late ticks is a loaded machine, not a stopped one"
+        );
+        assert!(
+            !suspended(last, last + Duration::seconds(30)),
+            "the threshold itself is still jitter: only a longer gap counts"
+        );
+        assert!(
+            suspended(last, last + Duration::minutes(4)),
+            "four minutes behind a 750ms timer means the process was not running"
+        );
+    }
+
+    /// A clock that moved backwards between probes is not evidence the machine slept, and must not
+    /// be reported as a stretch nobody watched.
+    #[test]
+    fn a_clock_that_went_backwards_is_not_suspension() {
+        let last = Local::now().fixed_offset();
+        assert!(!suspended(last, last - Duration::hours(1)));
+    }
+}

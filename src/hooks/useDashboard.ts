@@ -10,6 +10,14 @@ export interface DashboardState {
   updatedAt?: Date;
   /** Encrypted storage has not been opened yet, so nothing has been read rather than nothing exists. */
   unlocking: boolean;
+  /**
+   * Why the last action the user took did not happen, if it didn't.
+   *
+   * Separate from `error`, which is about the read failing and replaces the whole surface. A refused
+   * pause leaves a perfectly good day on screen; the only thing wrong is that the button did nothing,
+   * and that has to be said next to the button rather than instead of the history.
+   */
+  actionError?: string;
   toggleCollection: () => Promise<void>;
   retry: () => void;
 }
@@ -27,6 +35,7 @@ export function useDashboard(initial?: DashboardSnapshot, date?: string): Dashbo
   const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState<string>();
   const [updatedAt, setUpdatedAt] = useState<Date | undefined>(initial ? new Date() : undefined);
+  const [actionError, setActionError] = useState<string>();
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
@@ -84,8 +93,18 @@ export function useDashboard(initial?: DashboardSnapshot, date?: string): Dashbo
   const toggleCollection = useCallback(async () => {
     if (!snapshot) return;
     const next: CollectionStatus = snapshot.status === 'recording' ? 'paused' : 'recording';
-    const status = await bridge.setCollectionStatus(next);
-    setSnapshot((current) => (current ? { ...current, status } : current));
+    // The backend really does refuse this — when permission has been revoked, and while storage is
+    // still unlocking. Unhandled, the rejection left the button looking broken: nothing moved and
+    // nothing explained why.
+    try {
+      const status = await bridge.setCollectionStatus(next);
+      setSnapshot((current) => (current ? { ...current, status } : current));
+      setActionError(undefined);
+    } catch (reason) {
+      setActionError(
+        reason instanceof Error ? reason.message : 'Collection could not be changed just now',
+      );
+    }
   }, [snapshot]);
 
   return {
@@ -94,6 +113,7 @@ export function useDashboard(initial?: DashboardSnapshot, date?: string): Dashbo
     error,
     updatedAt,
     unlocking: snapshot?.storageReady === false,
+    actionError,
     toggleCollection,
     retry: () => {
       setLoading(true);

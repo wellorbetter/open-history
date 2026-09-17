@@ -454,10 +454,12 @@ fn day_snapshot(
         "privacy": {
             // No retention window is reported because none is enforced: nothing in this app runs a
             // retention sweep, so a number here would be a promise the code does not keep.
-            "excludedApplications": ["1Password", "Keychain Access"],
-            "localAiEnabled": false,
-            "localApiEnabled": false,
-            "mcpEnabled": false
+            //
+            // The excluded list is read from the policy the collector actually installs, not
+            // restated here. Three flags — a local model, a loopback API and an MCP companion —
+            // also used to be reported, hardcoded false, to feed switches that persisted nothing
+            // and features that were never built. The switches are gone, so the flags are too.
+            "excludedApplications": crate::runtime::EXCLUDED_APPLICATIONS,
         }
     })
 }
@@ -777,6 +779,30 @@ mod tests {
                 project_id: project_id.map(ToOwned::to_owned),
             },
         )
+    }
+
+    /// The projection may only report privacy facts the code enforces.
+    ///
+    /// It used to also send `localAiEnabled`, `localApiEnabled` and `mcpEnabled`, all hardcoded
+    /// false, feeding three settings switches that persisted nothing and stood for features that do
+    /// not exist — no HTTP listener is built, and the MCP binary prints one line and exits. The
+    /// excluded list was a second hardcoded copy of the collector's policy, and had already drifted
+    /// one entry behind it.
+    #[test]
+    fn the_privacy_projection_reports_only_what_is_enforced() {
+        let snapshot = today_snapshot(CollectionStatus::Paused, &[], TimelineBucket::default());
+        let privacy = snapshot["privacy"].as_object().expect("privacy object");
+
+        assert_eq!(
+            privacy["excludedApplications"],
+            json!(crate::runtime::EXCLUDED_APPLICATIONS),
+            "the card names what the collector excludes, so it has to read the same list"
+        );
+        assert_eq!(
+            privacy.len(),
+            1,
+            "no unbacked flag may reappear here: {privacy:?}"
+        );
     }
 
     #[test]

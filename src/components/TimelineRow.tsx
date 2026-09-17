@@ -1,5 +1,6 @@
 import { EyeOff } from 'lucide-react';
 import type { ActivitySegment } from '../types';
+import { describeObservedDuration, formatObservedDuration } from '../lib/duration';
 import { SourceStack } from './SourceStack';
 
 export function TimelineRow({
@@ -21,7 +22,7 @@ export function TimelineRow({
         className={`timeline-row ${isPrivate ? 'timeline-row--private' : ''}`}
         type="button"
         onClick={() => onOpen(segment.id)}
-        aria-label={`${segment.title}, ${segment.durationMinutes} minutes`}
+        aria-label={`${segment.title}, ${describeObservedDuration(segment.observedSeconds)}`}
       >
         <span className="timeline-title" title={segment.title}>
           {isPrivate && <EyeOff size={14} aria-hidden="true" />}
@@ -31,7 +32,9 @@ export function TimelineRow({
           <SourceStack sources={segment.sources} max={3} />
         </span>
         <span className="timeline-result">
-          {segment.mergeCount ? `${segment.mergeCount} merged` : `${segment.durationMinutes} min`}
+          {segment.mergeCount
+            ? `${segment.mergeCount} merged`
+            : formatObservedDuration(segment.observedSeconds)}
         </span>
       </button>
     </li>

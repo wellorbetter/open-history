@@ -2755,6 +2755,7 @@ dependencies = [
 name = "openhistory-desktop"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "openhistory-adapters",
  "openhistory-api",
@@ -4324,6 +4325,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

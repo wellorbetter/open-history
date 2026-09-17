@@ -8,6 +8,8 @@ export interface DashboardState {
   error?: string;
   /** When `snapshot` was last fetched (or provided as a fixture), for display only. */
   updatedAt?: Date;
+  /** Encrypted storage has not been opened yet, so nothing has been read rather than nothing exists. */
+  unlocking: boolean;
   toggleCollection: () => Promise<void>;
   retry: () => void;
 }
@@ -42,6 +44,35 @@ export function useDashboard(initial?: DashboardSnapshot): DashboardState {
     };
   }, [initial, reload]);
 
+  // Collection keeps running while a window is hidden, so a snapshot taken when the window first
+  // loaded is stale by the time it is looked at again. Refetch whenever this surface becomes
+  // visible or focused — which for the tray panel is exactly when it is opened — and keep a slow
+  // poll going while it stays on screen.
+  useEffect(() => {
+    if (initial) return;
+    const refresh = () => setReload((value) => value + 1);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    const timer = window.setInterval(refreshWhenVisible, 15_000);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.clearInterval(timer);
+    };
+  }, [initial]);
+
+  // Storage opens after the window does, and it can be waiting behind a keychain prompt for as
+  // long as the user takes to answer it. Poll quickly until it is open, so the day appears as soon
+  // as it can be read instead of at the next slow refresh.
+  useEffect(() => {
+    if (initial || snapshot?.storageReady !== false) return;
+    const timer = window.setTimeout(() => setReload((value) => value + 1), 700);
+    return () => window.clearTimeout(timer);
+  }, [initial, snapshot]);
+
   const toggleCollection = useCallback(async () => {
     if (!snapshot) return;
     const next: CollectionStatus = snapshot.status === 'recording' ? 'paused' : 'recording';
@@ -54,6 +85,7 @@ export function useDashboard(initial?: DashboardSnapshot): DashboardState {
     loading,
     error,
     updatedAt,
+    unlocking: snapshot?.storageReady === false,
     toggleCollection,
     retry: () => {
       setLoading(true);

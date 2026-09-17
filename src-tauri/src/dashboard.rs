@@ -1,11 +1,16 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::{BTreeMap, btree_map::Entry},
+    sync::{Arc, Mutex},
+};
 
-use chrono::Local;
-use openhistory_segmentation::{SegmentConfidence, TaskSegment};
-use openhistory_summaries::deterministic_summary;
+use chrono::{DateTime, FixedOffset, Local};
+use openhistory_segmentation::{SegmentConfidence, SegmentTitle, TaskSegment};
+use openhistory_summaries::{Summarizer, SummaryRequest};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager, State};
+
+use crate::preferences::TimelineBucket;
 
 /// Current state of semantic activity collection.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,6 +25,22 @@ pub enum CollectionStatus {
     PermissionNeeded,
     /// The native adapter needs attention.
     Error,
+}
+
+/// How much recent history a deletion request covers. Deliberately a closed set: a scope is a
+/// promise about what disappears, so it is the type system that keeps it honest rather than a
+/// string compared at the boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryScope {
+    /// The last ten minutes of activity.
+    Last10Minutes,
+    /// The last hour of activity.
+    LastHour,
+    /// Everything recorded since local midnight.
+    Today,
+    /// The entire retained history.
+    All,
 }
 
 /// Shared state exposed through the narrow dashboard command surface.
@@ -47,16 +68,28 @@ impl DashboardState {
 pub fn get_dashboard(
     state: State<'_, DashboardState>,
     runtime: State<'_, crate::runtime::CollectorRuntime>,
+    app: AppHandle,
 ) -> Result<Value, String> {
     let status = *state
         .status
         .lock()
         .map_err(|_| "collection state is unavailable".to_owned())?;
-    let segments = runtime
-        .today_segments()
-        .map_err(|error| error.to_string())?;
-    let mut snapshot = today_snapshot(status, &segments);
+    let segments = match runtime.today_segments() {
+        Ok(segments) => segments,
+        // Only "not open yet" is allowed to degrade, and it degrades into `storageReady: false`
+        // below rather than into silence. A real storage failure is still an error the user sees.
+        Err(openhistory_storage::StorageError::NotInitialized) => Vec::new(),
+        Err(error) => return Err(error.to_string()),
+    };
+    let bucket = crate::preferences::load(&app).timeline_bucket;
+    let mut snapshot = today_snapshot(status, &segments, bucket);
+    // Storage opens on a background thread, so early frames can arrive before the key is
+    // available — and if the credential store is asking for a password, that lasts as long as the
+    // user takes to answer. Saying the day is empty would be a claim about the day; this says only
+    // what is true, that nothing has been read yet.
+    snapshot["storageReady"] = json!(runtime.storage_ready());
     snapshot["recordedEventCount"] = json!(runtime.event_count());
+    snapshot["storageBytes"] = json!(runtime.storage_bytes());
     Ok(snapshot)
 }
 
@@ -80,6 +113,11 @@ pub async fn set_collection_status(
         return Err("collection cannot be started until permission is restored".to_owned());
     }
     let resolved = match status {
+        // Collecting into storage that is not open yet would drop every event on the floor and
+        // report Recording while doing it. Refusing says what is actually happening.
+        CollectionStatus::Recording if !runtime.storage_ready() => {
+            return Err("encrypted storage is still unlocking".to_owned());
+        }
         CollectionStatus::Recording => match runtime.start(app.clone()).await {
             Ok(()) => CollectionStatus::Recording,
             Err(openhistory_adapters::AdapterError::PermissionRequired) => {
@@ -94,6 +132,18 @@ pub async fn set_collection_status(
         CollectionStatus::PermissionNeeded | CollectionStatus::Error => unreachable!(),
     };
     state.set_status(resolved);
+    // Remember the choice, so a restart resumes it rather than silently recording nothing. Only a
+    // settled state is worth restoring: coming back up in PermissionNeeded or Error would arm
+    // collection against a machine that already refused it.
+    if matches!(
+        resolved,
+        CollectionStatus::Recording | CollectionStatus::Paused
+    ) {
+        let _ = crate::preferences::save_collecting(
+            &app,
+            matches!(resolved, CollectionStatus::Recording),
+        );
+    }
     let _ = app.emit("collection-status-changed", resolved);
     Ok(resolved)
 }
@@ -182,24 +232,29 @@ pub fn list_repositories(
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
-/// Emits a validated, explicitly scoped history-deletion request.
+/// Deletes the requested span of history from encrypted storage and returns how many raw events
+/// were removed. The surfaces are told afterwards so they can drop what they were showing.
 ///
 /// # Errors
 ///
-/// Returns an error when the requested deletion scope is unsupported.
-pub fn delete_history(scope: &str, app: AppHandle) -> Result<(), String> {
-    if !matches!(scope, "last_10_minutes" | "last_hour" | "today" | "all") {
-        return Err("unsupported deletion scope".to_owned());
-    }
+/// Returns an error when the deletion cannot complete.
+pub fn delete_history(
+    scope: HistoryScope,
+    runtime: State<'_, crate::runtime::CollectorRuntime>,
+    app: AppHandle,
+) -> Result<usize, String> {
+    let deleted = runtime
+        .delete_history(scope)
+        .map_err(|error| error.to_string())?;
     let _ = app.emit("history-deleted", scope);
-    Ok(())
+    Ok(deleted)
 }
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
 /// Returns the persisted menu bar icon style.
 pub fn get_tray_icon_style(app: AppHandle) -> crate::preferences::TrayIconStyle {
-    crate::preferences::load_tray_icon_style(&app)
+    crate::preferences::load(&app).tray_icon_style
 }
 
 #[tauri::command]
@@ -218,27 +273,154 @@ pub fn set_tray_icon_style(
     Ok(style)
 }
 
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+/// Returns the persisted capture granularity.
+pub fn get_capture_granularity(app: AppHandle) -> crate::preferences::CaptureGranularity {
+    crate::preferences::load(&app).capture_granularity
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+/// Persists a new capture granularity and applies it to collection that is already running.
+///
+/// # Errors
+///
+/// Returns an error when the preference cannot be saved or collection cannot be restarted.
+pub async fn set_capture_granularity(
+    granularity: crate::preferences::CaptureGranularity,
+    runtime: State<'_, crate::runtime::CollectorRuntime>,
+    app: AppHandle,
+) -> Result<crate::preferences::CaptureGranularity, String> {
+    crate::preferences::save_capture_granularity(&app, granularity)
+        .map_err(|error| error.to_string())?;
+    runtime
+        .set_capture_detail(granularity.into(), &app)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(granularity)
+}
+
+/// What a local coding agent made of one window's evidence, and who was asked.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Interpretation {
+    /// The command that answered, so the answer is attributable.
+    pub agent: String,
+    /// The agent's title for the window.
+    pub title: String,
+    /// The agent's account of what was going on.
+    pub summary: String,
+}
+
+/// Assembles exactly what a local agent is allowed to see about one window.
+///
+/// Nothing here is inferred: every line states an observation and the attention it held. The agent
+/// is given the same evidence the user is already looking at and nothing more, so its answer can be
+/// checked against what is on screen.
+fn interpretation_request(entry: &BucketedActivity, id: &str) -> SummaryRequest {
+    let mut evidence = vec![format!(
+        "Observed from {} to {}, holding attention for {} seconds in total.",
+        entry.started_at.format("%H:%M"),
+        entry.ended_at.format("%H:%M"),
+        entry.observed_seconds.max(0)
+    )];
+    for held in &entry.titles {
+        evidence.push(format!(
+            "Window titled \"{}\" held attention for {} seconds.",
+            held.title,
+            held.observed_seconds.max(0)
+        ));
+    }
+    for application in &entry.applications {
+        evidence.push(format!("Application \"{application}\" was in front."));
+    }
+    if let Some(project) = &entry.project_id {
+        evidence.push(format!("Work resolved to the project \"{project}\"."));
+    }
+    SummaryRequest {
+        segment_revision: format!("{id}-r1"),
+        fallback_title: entry
+            .titles
+            .first()
+            .map_or_else(|| "Desktop activity".to_owned(), |held| held.title.clone()),
+        applications: entry.applications.clone(),
+        evidence,
+    }
+}
+
+#[tauri::command]
+/// Asks a coding agent installed on this machine what one timeline row was about.
+///
+/// Runs only when the user asks. The agent it finds is a CLI the user already installed and signed
+/// in, which means the evidence leaves this machine for that agent's vendor — the surface that
+/// offers this has to say so before it is clicked. The answer is checked for grounding before it
+/// comes back, so an agent that names something the evidence never showed is refused rather than
+/// displayed.
+///
+/// # Errors
+///
+/// Returns an error when no agent is installed, the row is no longer in today's history, the agent
+/// cannot be run or times out, or its answer is not grounded in the evidence it was given.
+pub async fn interpret_activity(
+    segment_id: String,
+    runtime: State<'_, crate::runtime::CollectorRuntime>,
+    app: AppHandle,
+) -> Result<Interpretation, String> {
+    let agent = crate::agent::LocalAgent::detect()
+        .ok_or_else(|| "no coding agent command was found on this Mac".to_owned())?;
+    let segments = runtime
+        .today_segments()
+        .map_err(|error| error.to_string())?;
+    let bucket = crate::preferences::load(&app).timeline_bucket;
+    let entry = bucketed(&segments, bucket, None)
+        .into_iter()
+        .find(|entry| window_id(entry) == segment_id)
+        .ok_or_else(|| "that stretch is no longer in today's history".to_owned())?;
+    let request = interpretation_request(&entry, &segment_id);
+    let output = agent
+        .summarize(&request)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(Interpretation {
+        agent: agent.name(),
+        title: output.title,
+        summary: output.summary,
+    })
+}
+
 /// Builds today's dashboard projection from deterministically segmented, already-persisted
 /// events. Segments carry only what was actually observed: an unresolved project stays
 /// "General" rather than guessing, and there is no generated text anywhere in this path.
-fn today_snapshot(status: CollectionStatus, segments: &[TaskSegment]) -> Value {
+fn today_snapshot(
+    status: CollectionStatus,
+    segments: &[TaskSegment],
+    bucket: TimelineBucket,
+) -> Value {
     let now = Local::now();
     let ongoing_boundary = chrono::Duration::minutes(5);
-    let is_ongoing = |segment: &TaskSegment| {
+    // Only a recording collector can honestly extend its newest observation to the present moment.
+    let open_end = if status == CollectionStatus::Recording {
+        Some(now.fixed_offset())
+    } else {
+        None
+    };
+    let buckets = bucketed(segments, bucket, open_end);
+    let is_ongoing = |entry: &BucketedActivity| {
         status == CollectionStatus::Recording
-            && now.signed_duration_since(segment.ended_at) <= ongoing_boundary
+            && now.signed_duration_since(entry.ended_at) <= ongoing_boundary
     };
 
-    let mut timeline: Vec<Value> = segments
+    let mut timeline: Vec<Value> = buckets
         .iter()
-        .map(|segment| activity_segment_json(segment, is_ongoing(segment)))
+        .map(|entry| activity_segment_json(entry, is_ongoing(entry)))
         .collect();
     timeline.reverse();
 
-    let current = segments
+    let current = buckets
         .last()
-        .filter(|segment| is_ongoing(segment))
-        .map(|segment| activity_segment_json(segment, true));
+        .filter(|entry| is_ongoing(entry))
+        .map(|entry| activity_segment_json(entry, true));
 
     json!({
         "status": status,
@@ -256,43 +438,230 @@ fn today_snapshot(status: CollectionStatus, segments: &[TaskSegment]) -> Value {
     })
 }
 
-fn activity_segment_json(segment: &TaskSegment, is_ongoing: bool) -> Value {
-    let summary = deterministic_summary(segment);
-    let duration_minutes = summary.duration_seconds / 60;
-    let confidence = match segment.confidence {
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+/// Returns the persisted timeline grouping window.
+pub fn get_timeline_bucket(app: AppHandle) -> TimelineBucket {
+    crate::preferences::load(&app).timeline_bucket
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+/// Persists a new timeline grouping window.
+///
+/// # Errors
+///
+/// Returns an error when the preference cannot be saved.
+pub fn set_timeline_bucket(
+    bucket: TimelineBucket,
+    app: AppHandle,
+) -> Result<TimelineBucket, String> {
+    crate::preferences::save_timeline_bucket(&app, bucket).map_err(|error| error.to_string())?;
+    Ok(bucket)
+}
+
+/// One timeline row: every segment that fell inside the same fixed window, merged.
+///
+/// Continuity segmentation alone produces a row per uninterrupted stretch of one context, which
+/// on a real desktop means dozens of few-second rows an hour — accurate, unreadable, and mostly
+/// zero-minute. Collapsing them into a window gives the timeline a stable rhythm while keeping
+/// every number measured: attention is the summed observed time, never the width of the window.
+struct BucketedActivity {
+    window_start: DateTime<FixedOffset>,
+    started_at: DateTime<FixedOffset>,
+    ended_at: DateTime<FixedOffset>,
+    observed_seconds: i64,
+    applications: Vec<String>,
+    titles: Vec<SegmentTitle>,
+    project_id: Option<String>,
+    confidence: SegmentConfidence,
+}
+
+/// Folds another segment's titles into a window's, summing the attention each title held and
+/// keeping the strongest first.
+///
+/// The same window is normally seen in several segments of one bucket, so the totals have to add up
+/// rather than the lists concatenate — otherwise the thing someone spent an hour on ranks below
+/// whatever they opened first.
+fn merge_titles(into: &mut Vec<SegmentTitle>, from: &[SegmentTitle]) {
+    for incoming in from {
+        if let Some(existing) = into.iter_mut().find(|held| held.title == incoming.title) {
+            existing.observed_seconds += incoming.observed_seconds;
+        } else {
+            into.push(incoming.clone());
+        }
+    }
+    into.sort_by_key(|held| -held.observed_seconds);
+    into.truncate(5);
+}
+
+/// A merged window is only as trustworthy as its least certain contributor. `SegmentConfidence`
+/// deliberately has no ordering of its own — deriving one would rank it by declaration order,
+/// which reads backwards — so the comparison is spelled out here.
+fn weaker_confidence(left: SegmentConfidence, right: SegmentConfidence) -> SegmentConfidence {
+    let rank = |value: SegmentConfidence| match value {
+        SegmentConfidence::Low => 0_u8,
+        SegmentConfidence::Medium => 1,
+        SegmentConfidence::High => 2,
+    };
+    if rank(right) < rank(left) {
+        right
+    } else {
+        left
+    }
+}
+
+fn bucketed(
+    segments: &[TaskSegment],
+    bucket: TimelineBucket,
+    open_end: Option<DateTime<FixedOffset>>,
+) -> Vec<BucketedActivity> {
+    let window = bucket.duration();
+    let window_seconds = window.num_seconds().max(1);
+    let mut buckets: BTreeMap<i64, BucketedActivity> = BTreeMap::new();
+
+    for segment in segments {
+        let key = segment.started_at.timestamp().div_euclid(window_seconds);
+        // Segmentation measured how long each observation held. The only part it cannot know is the
+        // newest observation's ending, because nothing has replaced it yet — so a still-recording
+        // collector extends that one to now, and a stopped one leaves it where the evidence ends.
+        let mut observed = segment.observed_seconds.max(0);
+        if segment.open_ended
+            && let Some(now) = open_end
+        {
+            observed += now
+                .signed_duration_since(segment.ended_at)
+                .num_seconds()
+                .max(0);
+        }
+        let observed = observed;
+        match buckets.entry(key) {
+            Entry::Vacant(slot) => {
+                let window_start = DateTime::from_timestamp(key * window_seconds, 0)
+                    .map_or(segment.started_at, |value| {
+                        value.with_timezone(&segment.started_at.timezone())
+                    });
+                slot.insert(BucketedActivity {
+                    window_start,
+                    started_at: segment.started_at,
+                    ended_at: segment.ended_at,
+                    observed_seconds: observed,
+                    applications: segment.applications.clone(),
+                    titles: segment.titles.clone(),
+                    project_id: segment.project_id.clone(),
+                    confidence: segment.confidence,
+                });
+            }
+            Entry::Occupied(mut slot) => {
+                let entry = slot.get_mut();
+                entry.started_at = entry.started_at.min(segment.started_at);
+                entry.ended_at = entry.ended_at.max(segment.ended_at);
+                entry.observed_seconds += observed;
+                for application in &segment.applications {
+                    if !entry.applications.contains(application) {
+                        entry.applications.push(application.clone());
+                    }
+                }
+                merge_titles(&mut entry.titles, &segment.titles);
+                // A window that spans two projects belongs to neither: say so rather than
+                // attributing the whole window to whichever one happened to be first.
+                if entry.project_id != segment.project_id {
+                    entry.project_id = None;
+                }
+                entry.confidence = weaker_confidence(entry.confidence, segment.confidence);
+            }
+        }
+    }
+
+    buckets.into_values().collect()
+}
+
+/// Names a timeline row after the window it covers, so the same row keeps the same identity
+/// between snapshots and can be asked about later.
+fn window_id(entry: &BucketedActivity) -> String {
+    format!("window-{}", entry.window_start.timestamp())
+}
+
+fn activity_segment_json(entry: &BucketedActivity, is_ongoing: bool) -> Value {
+    let duration_minutes = entry.observed_seconds / 60;
+    let confidence = match entry.confidence {
         SegmentConfidence::High => "high",
         SegmentConfidence::Medium => "medium",
         SegmentConfidence::Low => "low",
     };
-    let category = if segment.project_id.is_some() {
+    let category = if entry.project_id.is_some() {
         "Development"
     } else {
         "General"
     };
-    let sources: Vec<Value> = segment
+    let sources: Vec<Value> = entry
         .applications
         .iter()
         .map(|name| source_for_application(name))
         .collect();
+    // Name the window after the most specific thing actually observed in it: the window someone
+    // spent the most time in, then the project when one resolved, then the applications themselves.
+    // A title says which file or page; an application list only says which program was in front.
+    let title = entry
+        .titles
+        .first()
+        .map(|held| held.title.clone())
+        .or_else(|| entry.project_id.clone())
+        .unwrap_or_else(|| match entry.applications.as_slice() {
+            [] => "Unidentified activity".to_owned(),
+            [single] => single.clone(),
+            [first, rest @ ..] => format!("{first} +{}", rest.len()),
+        });
+    let places = match entry.applications.as_slice() {
+        [] => "Activity was recorded without identifying application detail.".to_owned(),
+        [single] => format!("Worked in {single}."),
+        values => format!("Worked across {}.", values.join(", ")),
+    };
+    // What was open, with the time each held, is the part a reader can actually act on. It is listed
+    // rather than interpreted: naming an intent behind these windows would be a guess, and the
+    // summary is the one place that has to stay strictly what was seen.
+    let summary = if entry.titles.is_empty() {
+        places
+    } else {
+        let opened = entry
+            .titles
+            .iter()
+            .map(|held| {
+                let minutes = held.observed_seconds / 60;
+                if minutes > 0 {
+                    format!("{} ({minutes} min)", held.title)
+                } else {
+                    held.title.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" · ");
+        format!("{places} Open: {opened}.")
+    };
+    let id = window_id(entry);
 
     json!({
-        "id": segment.segment_id,
-        "title": summary.title,
-        "summary": summary.outline,
-        "start": segment.started_at.format("%H:%M").to_string(),
-        "end": segment.ended_at.format("%H:%M").to_string(),
+        "id": id,
+        "title": title,
+        "summary": summary,
+        "start": entry.started_at.format("%H:%M").to_string(),
+        "end": entry.ended_at.format("%H:%M").to_string(),
         "durationMinutes": duration_minutes,
+        // The raw seconds travel alongside the minutes so the UI can distinguish "nothing was
+        // observed" from "less than a minute was observed". Truncating to minutes in the backend
+        // and rendering the result verbatim reported both as a flat "0 min".
+        "observedSeconds": entry.observed_seconds,
         "sources": sources,
         "state": if is_ongoing { "current" } else { "complete" },
         "category": category,
         "confidence": confidence,
         "origin": "native",
         "revisions": [{
-            "id": format!("{}-r1", segment.segment_id),
+            "id": format!("{id}-r1"),
             "author": "deterministic",
-            "createdAt": segment.started_at.to_rfc3339(),
-            "title": summary.title,
-            "summary": summary.outline
+            "createdAt": entry.started_at.to_rfc3339(),
+            "title": title,
+            "summary": summary
         }]
     })
 }
@@ -379,7 +748,7 @@ mod tests {
 
     #[test]
     fn empty_segments_produce_no_activity_and_a_real_date() {
-        let snapshot = today_snapshot(CollectionStatus::Paused, &[]);
+        let snapshot = today_snapshot(CollectionStatus::Paused, &[], TimelineBucket::default());
         assert_eq!(snapshot["status"], "paused");
         assert_eq!(snapshot["timeline"], json!([]));
         assert!(snapshot["current"].is_null());
@@ -393,11 +762,24 @@ mod tests {
     fn a_segment_with_a_resolved_project_is_grounded_in_its_own_evidence() {
         let events = vec![window_event(0, Some("open-history"))];
         let segments = segment_events(&events, SegmentationSettings::default());
-        let snapshot = today_snapshot(CollectionStatus::Paused, &segments);
+        let snapshot = today_snapshot(
+            CollectionStatus::Paused,
+            &segments,
+            TimelineBucket::default(),
+        );
         let timeline = snapshot["timeline"].as_array().expect("timeline array");
         assert_eq!(timeline.len(), 1);
         assert_eq!(timeline[0]["category"], "Development");
-        assert_eq!(timeline[0]["title"], "open-history");
+        // The window title outranks the project name: both are grounded in the same event, and only
+        // one of them says what was being worked on.
+        assert_eq!(timeline[0]["title"], "main.rs");
+        assert!(
+            timeline[0]["summary"]
+                .as_str()
+                .expect("summary")
+                .contains("main.rs"),
+            "the summary has to name what was open, not only where"
+        );
         assert_eq!(timeline[0]["sources"][0]["name"], "Visual Studio Code");
         assert_eq!(timeline[0]["sources"][0]["kind"], "editor");
         assert_eq!(timeline[0]["state"], "complete");
@@ -408,12 +790,116 @@ mod tests {
         let events = vec![window_event(0, None)];
         let segments = segment_events(&events, SegmentationSettings::default());
 
-        let paused = today_snapshot(CollectionStatus::Paused, &segments);
+        let paused = today_snapshot(
+            CollectionStatus::Paused,
+            &segments,
+            TimelineBucket::default(),
+        );
         assert!(paused["current"].is_null());
         assert_eq!(paused["timeline"][0]["category"], "General");
 
-        let recording = today_snapshot(CollectionStatus::Recording, &segments);
+        let recording = today_snapshot(
+            CollectionStatus::Recording,
+            &segments,
+            TimelineBucket::default(),
+        );
         assert_eq!(recording["current"]["state"], "current");
         assert_eq!(recording["timeline"][0]["state"], "current");
+    }
+
+    fn segment(
+        started_minutes: i64,
+        ended_minutes: i64,
+        applications: &[&str],
+        project_id: Option<&str>,
+    ) -> TaskSegment {
+        let base = DateTime::parse_from_rfc3339("2026-09-17T09:00:00+08:00").unwrap();
+        TaskSegment {
+            segment_id: format!("segment-{started_minutes}"),
+            started_at: base + chrono::Duration::minutes(started_minutes),
+            ended_at: base + chrono::Duration::minutes(ended_minutes),
+            event_ids: Vec::new(),
+            applications: applications
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            titles: Vec::new(),
+            project_id: project_id.map(ToOwned::to_owned),
+            confidence: SegmentConfidence::Medium,
+            // These tests are about how windows merge, not about how dwell is measured, so the
+            // segment is credited with its own span. Measuring dwell is covered in segmentation.
+            observed_seconds: (ended_minutes - started_minutes) * 60,
+            open_ended: false,
+        }
+    }
+
+    #[test]
+    fn segments_inside_one_window_collapse_into_a_single_row() {
+        // Three short stretches inside the same ten minutes, which would otherwise be three rows
+        // reading "0 min" each.
+        let segments = vec![
+            segment(0, 2, &["Ghostty"], None),
+            segment(3, 6, &["Chrome"], None),
+            segment(7, 9, &["Ghostty"], None),
+        ];
+
+        let snapshot = today_snapshot(
+            CollectionStatus::Paused,
+            &segments,
+            TimelineBucket::TenMinutes,
+        );
+        let timeline = snapshot["timeline"].as_array().expect("timeline");
+        assert_eq!(timeline.len(), 1, "one window is one row");
+        let row = &timeline[0];
+        assert_eq!(row["start"], "09:00");
+        assert_eq!(row["end"], "09:09");
+        // Attention is the summed observed time (2 + 3 + 2), never the width of the window.
+        assert_eq!(row["durationMinutes"], 7);
+        assert_eq!(row["sources"].as_array().unwrap().len(), 2);
+        assert_eq!(row["title"], "Ghostty +1");
+    }
+
+    #[test]
+    fn a_narrower_window_keeps_the_same_activity_in_separate_rows() {
+        let segments = vec![
+            segment(0, 2, &["Ghostty"], None),
+            segment(7, 9, &["Ghostty"], None),
+        ];
+
+        let wide = today_snapshot(
+            CollectionStatus::Paused,
+            &segments,
+            TimelineBucket::TenMinutes,
+        );
+        assert_eq!(wide["timeline"].as_array().unwrap().len(), 1);
+
+        let narrow = today_snapshot(
+            CollectionStatus::Paused,
+            &segments,
+            TimelineBucket::FiveMinutes,
+        );
+        assert_eq!(narrow["timeline"].as_array().unwrap().len(), 2);
+        // Newest first, matching how the surfaces read.
+        assert_eq!(narrow["timeline"][0]["start"], "09:07");
+    }
+
+    #[test]
+    fn a_window_spanning_two_projects_is_attributed_to_neither() {
+        let segments = vec![
+            segment(0, 3, &["Code"], Some("open-history")),
+            segment(4, 8, &["Code"], Some("timetrace")),
+        ];
+
+        let snapshot = today_snapshot(
+            CollectionStatus::Paused,
+            &segments,
+            TimelineBucket::TenMinutes,
+        );
+        let row = &snapshot["timeline"][0];
+        assert_eq!(
+            row["category"], "General",
+            "no single project owns the window"
+        );
+        assert_eq!(row["title"], "Code");
     }
 }

@@ -326,6 +326,25 @@ impl HistoryRepository for EncryptedDatabase {
         normalize_event_order(&events)
     }
 
+    fn events_since(&self, start: DateTime<FixedOffset>) -> Vec<EventEnvelope> {
+        let Ok(mut statement) = self.connection.prepare(
+            "SELECT event_json FROM raw_events WHERE occurred_at >= ?1 \
+             ORDER BY occurred_at, monotonic_ticks, event_id",
+        ) else {
+            return Vec::new();
+        };
+        let Ok(rows) = statement.query_map([start.with_timezone(&Utc).to_rfc3339()], |row| {
+            row.get::<_, String>(0)
+        }) else {
+            return Vec::new();
+        };
+        let events = rows
+            .filter_map(Result::ok)
+            .filter_map(|value| serde_json::from_str(&value).ok())
+            .collect::<Vec<_>>();
+        normalize_event_order(&events)
+    }
+
     fn sweep_retention(
         &mut self,
         now: DateTime<FixedOffset>,
@@ -349,6 +368,42 @@ impl HistoryRepository for EncryptedDatabase {
         Ok(DeletionReport {
             raw_events,
             segments: 0,
+        })
+    }
+
+    fn delete_events_since(
+        &mut self,
+        start: Option<DateTime<FixedOffset>>,
+    ) -> Result<DeletionReport, StorageError> {
+        let transaction = self
+            .connection
+            .transaction()
+            .map_err(|_| StorageError::Database)?;
+        let (raw_events, segments) = if let Some(start) = start {
+            let bound = start.with_timezone(&Utc).to_rfc3339();
+            let raw_events = transaction
+                .execute(
+                    "DELETE FROM raw_events WHERE occurred_at >= ?1",
+                    [bound.clone()],
+                )
+                .map_err(|_| StorageError::RolledBack)?;
+            let segments = transaction
+                .execute("DELETE FROM task_segments WHERE ended_at >= ?1", [bound])
+                .map_err(|_| StorageError::RolledBack)?;
+            (raw_events, segments)
+        } else {
+            let raw_events = transaction
+                .execute("DELETE FROM raw_events", [])
+                .map_err(|_| StorageError::RolledBack)?;
+            let segments = transaction
+                .execute("DELETE FROM task_segments", [])
+                .map_err(|_| StorageError::RolledBack)?;
+            (raw_events, segments)
+        };
+        transaction.commit().map_err(|_| StorageError::RolledBack)?;
+        Ok(DeletionReport {
+            raw_events,
+            segments,
         })
     }
 
@@ -478,6 +533,10 @@ pub trait HistoryRepository {
     fn upsert_segment(&mut self, segment: TaskSegment) -> Result<(), StorageError>;
     /// Returns allowed events ordered by stable event key.
     fn events(&self) -> Vec<EventEnvelope>;
+    /// Returns canonical events at or after `start`, in the same deterministic order as
+    /// [`Self::events`]. Reading a bounded range keeps a day view from paying for the whole
+    /// retained history on every refresh.
+    fn events_since(&self, start: DateTime<FixedOffset>) -> Vec<EventEnvelope>;
     /// Deletes expired raw events and returns counts only.
     ///
     /// # Errors
@@ -487,6 +546,18 @@ pub trait HistoryRepository {
         &mut self,
         now: DateTime<FixedOffset>,
         policy: RetentionPolicy,
+    ) -> Result<DeletionReport, StorageError>;
+
+    /// Deletes everything recorded at or after `start`, or the entire history when `start` is
+    /// `None`. This is the user-initiated counterpart to [`Self::sweep_retention`], which expires
+    /// the oldest records instead: a person asking to forget the last hour means the newest ones.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when the deletion cannot complete transactionally.
+    fn delete_events_since(
+        &mut self,
+        start: Option<DateTime<FixedOffset>>,
     ) -> Result<DeletionReport, StorageError>;
 
     /// Opts a repository root into Git evidence collection.
@@ -574,6 +645,16 @@ impl HistoryRepository for MemoryHistoryRepository {
         normalize_event_order(&self.events.values().cloned().collect::<Vec<_>>())
     }
 
+    fn events_since(&self, start: DateTime<FixedOffset>) -> Vec<EventEnvelope> {
+        let events = self
+            .events
+            .values()
+            .filter(|event| event.occurred_at >= start)
+            .cloned()
+            .collect::<Vec<_>>();
+        normalize_event_order(&events)
+    }
+
     fn sweep_retention(
         &mut self,
         now: DateTime<FixedOffset>,
@@ -588,6 +669,25 @@ impl HistoryRepository for MemoryHistoryRepository {
         Ok(DeletionReport {
             raw_events: before - self.events.len(),
             segments: 0,
+        })
+    }
+
+    fn delete_events_since(
+        &mut self,
+        start: Option<DateTime<FixedOffset>>,
+    ) -> Result<DeletionReport, StorageError> {
+        let events_before = self.events.len();
+        let segments_before = self.segments.len();
+        if let Some(start) = start {
+            self.events.retain(|_, event| event.occurred_at < start);
+            self.segments.retain(|_, segment| segment.ended_at < start);
+        } else {
+            self.events.clear();
+            self.segments.clear();
+        }
+        Ok(DeletionReport {
+            raw_events: events_before - self.events.len(),
+            segments: segments_before - self.segments.len(),
         })
     }
 
@@ -719,6 +819,99 @@ mod tests {
             .unwrap();
         assert_eq!(report.raw_events, 1);
         assert_eq!(repository.events().len(), 1);
+    }
+
+    #[test]
+    fn a_bounded_read_returns_the_same_events_the_full_read_would_from_that_point() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("history.sqlite3");
+        let provider = MemoryKeyProvider::default();
+        let mut database = EncryptedDatabase::open_or_create(&path, &provider).unwrap();
+        let mut memory = MemoryHistoryRepository::default();
+        for (moment, tick) in [
+            ("2026-09-16T23:59:59+08:00", 1),
+            ("2026-09-17T00:00:00+08:00", 2),
+            ("2026-09-17T09:30:00+08:00", 3),
+        ] {
+            let entry = event(moment, tick);
+            database.insert_event(entry.clone()).unwrap();
+            memory.insert_event(entry).unwrap();
+        }
+
+        let start = DateTime::parse_from_rfc3339("2026-09-17T00:00:00+08:00").unwrap();
+        let bounded = database.events_since(start);
+        assert_eq!(
+            bounded.len(),
+            2,
+            "the previous day is excluded at the query"
+        );
+        assert!(bounded.iter().all(|event| event.occurred_at >= start));
+        assert_eq!(
+            bounded,
+            database
+                .events()
+                .into_iter()
+                .filter(|event| event.occurred_at >= start)
+                .collect::<Vec<_>>(),
+            "a bounded read must not reorder or drop anything a full read would keep"
+        );
+        // Both backends answer the same question the same way.
+        assert_eq!(memory.events_since(start), bounded);
+    }
+
+    #[test]
+    fn deleting_recent_history_removes_the_newest_records_and_keeps_the_rest() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("history.sqlite3");
+        let provider = MemoryKeyProvider::default();
+        let mut database = EncryptedDatabase::open_or_create(&path, &provider).unwrap();
+        for (moment, tick) in [
+            ("2026-09-17T08:00:00+08:00", 1),
+            ("2026-09-17T09:55:00+08:00", 2),
+            ("2026-09-17T09:59:00+08:00", 3),
+        ] {
+            database.insert_event(event(moment, tick)).unwrap();
+        }
+
+        // "Forget the last ten minutes" means the newest records, the opposite end from retention.
+        let start = DateTime::parse_from_rfc3339("2026-09-17T09:50:00+08:00").unwrap();
+        let report = database.delete_events_since(Some(start)).unwrap();
+        assert_eq!(report.raw_events, 2);
+        let remaining = database.events();
+        assert_eq!(remaining.len(), 1);
+        assert!(remaining[0].occurred_at < start);
+
+        // Deleting everything leaves nothing behind, not even the older survivor.
+        let report = database.delete_events_since(None).unwrap();
+        assert_eq!(report.raw_events, 1);
+        assert!(database.events().is_empty());
+    }
+
+    #[test]
+    fn deleting_all_history_clears_derived_segments_too() {
+        let mut repository = MemoryHistoryRepository::default();
+        repository
+            .insert_event(event("2026-09-17T08:00:00+08:00", 1))
+            .unwrap();
+        repository
+            .upsert_segment(TaskSegment {
+                segment_id: "segment-1".to_owned(),
+                started_at: DateTime::parse_from_rfc3339("2026-09-17T08:00:00+08:00").unwrap(),
+                ended_at: DateTime::parse_from_rfc3339("2026-09-17T08:20:00+08:00").unwrap(),
+                event_ids: Vec::new(),
+                applications: Vec::new(),
+                titles: Vec::new(),
+                project_id: None,
+                confidence: openhistory_segmentation::SegmentConfidence::Medium,
+                observed_seconds: 20 * 60,
+                open_ended: false,
+            })
+            .unwrap();
+
+        let report = repository.delete_events_since(None).unwrap();
+        assert_eq!(report.raw_events, 1);
+        assert_eq!(report.segments, 1, "a derived projection is history too");
+        assert!(repository.events().is_empty());
     }
 
     #[test]

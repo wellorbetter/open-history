@@ -1,14 +1,19 @@
 import { invoke } from '@tauri-apps/api/core';
 import { dashboardFixture } from '../fixtures';
 import type {
+  CaptureGranularity,
   CollectionStatus,
   DashboardSnapshot,
   HistoryDeleteScope,
+  Interpretation,
+  TimelineBucket,
   TrayIconStyle,
   WeekDigest,
 } from '../types';
 
 const TRAY_ICON_STYLE_FIXTURE_KEY = 'openhistory-tray-icon-style-fixture';
+const CAPTURE_GRANULARITY_FIXTURE_KEY = 'openhistory-capture-granularity-fixture';
+const TIMELINE_BUCKET_FIXTURE_KEY = 'openhistory-timeline-bucket-fixture';
 
 declare global {
   interface Window {
@@ -46,9 +51,24 @@ export const bridge = {
     window.dispatchEvent(new PopStateEvent('popstate'));
   },
 
-  async deleteHistory(scope: HistoryDeleteScope): Promise<void> {
-    if (isTauri()) await invoke('delete_history', { scope });
-    else await delay(80);
+  /**
+   * Asks a coding agent installed on this Mac what one timeline row was about.
+   *
+   * Only ever called from an explicit click: the agent is a CLI the user signed in themselves, and
+   * it sends the row's evidence to that agent's vendor. Outside the native app there is no agent to
+   * ask, so this rejects rather than inventing an answer the fixtures could not have produced.
+   */
+  async interpretActivity(segmentId: string): Promise<Interpretation> {
+    if (isTauri()) return invoke<Interpretation>('interpret_activity', { segmentId });
+    await delay(200);
+    throw new Error('a coding agent can only be asked from the desktop app');
+  },
+
+  /** Deletes the given span from encrypted storage, returning how many raw events were removed. */
+  async deleteHistory(scope: HistoryDeleteScope): Promise<number> {
+    if (isTauri()) return invoke<number>('delete_history', { scope });
+    await delay(80);
+    return 0;
   },
 
   /**
@@ -82,5 +102,37 @@ export const bridge = {
     await delay(40);
     window.localStorage.setItem(TRAY_ICON_STYLE_FIXTURE_KEY, style);
     return style;
+  },
+
+  /** Reads how much detail collection records per observation. */
+  async getCaptureGranularity(): Promise<CaptureGranularity> {
+    if (isTauri()) return invoke<CaptureGranularity>('get_capture_granularity');
+    await delay(20);
+    const stored = window.localStorage.getItem(CAPTURE_GRANULARITY_FIXTURE_KEY);
+    return stored === 'application' || stored === 'semantic' ? stored : 'window';
+  },
+
+  async setCaptureGranularity(granularity: CaptureGranularity): Promise<CaptureGranularity> {
+    if (isTauri()) return invoke<CaptureGranularity>('set_capture_granularity', { granularity });
+    await delay(40);
+    window.localStorage.setItem(CAPTURE_GRANULARITY_FIXTURE_KEY, granularity);
+    return granularity;
+  },
+
+  /** Reads the fixed window the day timeline is grouped into. */
+  async getTimelineBucket(): Promise<TimelineBucket> {
+    if (isTauri()) return invoke<TimelineBucket>('get_timeline_bucket');
+    await delay(20);
+    const stored = window.localStorage.getItem(TIMELINE_BUCKET_FIXTURE_KEY);
+    return stored === 'five_minutes' || stored === 'thirty_minutes' || stored === 'one_hour'
+      ? stored
+      : 'ten_minutes';
+  },
+
+  async setTimelineBucket(bucket: TimelineBucket): Promise<TimelineBucket> {
+    if (isTauri()) return invoke<TimelineBucket>('set_timeline_bucket', { bucket });
+    await delay(40);
+    window.localStorage.setItem(TIMELINE_BUCKET_FIXTURE_KEY, bucket);
+    return bucket;
   },
 };

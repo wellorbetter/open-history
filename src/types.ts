@@ -2,6 +2,10 @@ export type CollectionStatus = 'recording' | 'paused' | 'permission_needed' | 'e
 
 export type TrayIconStyle = 'monochrome' | 'color';
 
+export type CaptureGranularity = 'application' | 'window' | 'semantic';
+
+export type TimelineBucket = 'five_minutes' | 'ten_minutes' | 'thirty_minutes' | 'one_hour';
+
 export type SourceKind = 'terminal' | 'editor' | 'browser' | 'agent' | 'document' | 'system';
 
 export interface ActivitySource {
@@ -27,6 +31,8 @@ export interface ActivitySegment {
   start: string;
   end: string;
   durationMinutes: number;
+  /** Observed seconds before minute truncation, so sub-minute activity is distinguishable from none. */
+  observedSeconds: number;
   sources: ActivitySource[];
   state: 'current' | 'complete' | 'private_gap';
   mergeCount?: number;
@@ -51,6 +57,21 @@ export interface DashboardSnapshot {
   current?: ActivitySegment;
   timeline: ActivitySegment[];
   privacy: PrivacySettings;
+  /** Bytes the encrypted history occupies on disk, including its write-ahead log. */
+  storageBytes?: number;
+  /**
+   * Whether encrypted storage was open when this snapshot was taken. `false` means nothing has
+   * been read yet, which is not the same claim as a day with nothing in it.
+   */
+  storageReady?: boolean;
+}
+
+/** What a coding agent on this machine made of one window's evidence. */
+export interface Interpretation {
+  /** The command that answered, so the reader knows who is talking. */
+  agent: string;
+  title: string;
+  summary: string;
 }
 
 export type HistoryDeleteScope = 'last_10_minutes' | 'last_hour' | 'today' | 'all';

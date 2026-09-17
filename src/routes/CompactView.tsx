@@ -11,12 +11,19 @@ import { StatusBadge } from '../components/StatusBadge';
 import { TimelineRow } from '../components/TimelineRow';
 
 export function CompactView({ initial }: { initial?: DashboardSnapshot }) {
-  const { snapshot, loading, error, updatedAt, toggleCollection, retry } = useDashboard(initial);
+  const { snapshot, loading, error, updatedAt, unlocking, toggleCollection, retry } =
+    useDashboard(initial);
 
-  if (loading || !snapshot) {
+  // An unlocked-but-unread history must not be drawn as an empty day: the timeline below would
+  // read as "nothing happened", when in fact nothing has been looked at yet.
+  if (loading || !snapshot || unlocking) {
     return (
       <main className="compact-shell compact-shell--centered">
-        {error ? <ErrorState message={error} onRetry={retry} /> : <LoadingState />}
+        {error ? (
+          <ErrorState message={error} onRetry={retry} />
+        ) : (
+          <LoadingState message={unlocking ? 'Unlocking encrypted history…' : undefined} />
+        )}
       </main>
     );
   }

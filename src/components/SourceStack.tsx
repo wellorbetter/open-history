@@ -20,7 +20,9 @@ export function SourceStack({ sources, max = 3 }: { sources: ActivitySource[]; m
   return (
     <span className="source-stack" role="img" aria-label={label} title={label}>
       {visible.map((source) => {
-        const Icon = sourceIcons[source.kind];
+        // A kind added on the backend before this table learns about it must degrade to the neutral
+        // glyph, not to `undefined` — rendering that as a component crashes the whole timeline.
+        const Icon = sourceIcons[source.kind] ?? Monitor;
         return (
           <span
             className="source-icon"

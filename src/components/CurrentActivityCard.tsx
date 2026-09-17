@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react';
 import type { ActivitySegment } from '../types';
+import { formatObservedDuration } from '../lib/duration';
 import { SourceStack } from './SourceStack';
 
 export function CurrentActivityCard({
@@ -27,7 +28,7 @@ export function CurrentActivityCard({
           {segment.title}
         </span>
         <span className="current-meta">
-          {segment.start}–{segment.end} · {segment.durationMinutes} min
+          {segment.start}–{segment.end} · {formatObservedDuration(segment.observedSeconds)}
         </span>
       </span>
       <span className="current-actions">

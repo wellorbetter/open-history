@@ -1,10 +1,10 @@
 import { AlertTriangle, LoaderCircle, RefreshCw } from 'lucide-react';
 
-export function LoadingState() {
+export function LoadingState({ message = 'Loading local history…' }: { message?: string }) {
   return (
     <div className="feedback-state" role="status">
       <LoaderCircle className="spin" size={22} aria-hidden="true" />
-      <span>Loading local history…</span>
+      <span>{message}</span>
     </div>
   );
 }

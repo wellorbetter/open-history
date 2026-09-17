@@ -886,6 +886,16 @@ button.current-card:active {
   justify-content: space-between;
 }
 
+/* Distinguishes what the app is telling you about itself from what it observed about your day. */
+.muted-note {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.inspector-section > button {
+  margin-top: 12px;
+}
+
 .source-list {
   display: grid;
   gap: 8px;

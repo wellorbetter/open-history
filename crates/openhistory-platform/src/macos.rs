@@ -22,7 +22,7 @@ use axuielement::{
         AX_MENU_ITEM_SELECTED_NOTIFICATION, AX_SELECTED_TEXT_CHANGED_NOTIFICATION,
         AX_TITLE_CHANGED_NOTIFICATION, AX_VALUE_CHANGED_NOTIFICATION,
     },
-    is_process_trusted, system_wide,
+    is_process_trusted, is_process_trusted_with_prompt, system_wide,
 };
 use chrono::Local;
 use openhistory_adapters::{AdapterError, EventSender};
@@ -56,6 +56,12 @@ const FALLBACK_NOTIFICATIONS: &[&str] = &[
 
 pub(super) fn permission_granted() -> bool {
     is_process_trusted()
+}
+
+/// Shows the system Accessibility trust prompt when not already granted. Returns immediately,
+/// without prompting, if the process is already trusted.
+pub(super) fn request_permission() -> bool {
+    is_process_trusted_with_prompt()
 }
 
 pub(super) async fn run_collector(

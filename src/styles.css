@@ -54,6 +54,13 @@ body {
     radial-gradient(circle at 88% 4%, rgba(238, 245, 226, 0.8), transparent 38%), #e8ede8;
 }
 
+/* The compact window is a borderless, transparent macOS window: only the rounded card drawn by
+   .compact-shell should be opaque. An opaque body here would fill the window's full rectangular
+   bounds, squaring off what should be transparent, rounded corners. */
+[data-surface='compact'] body {
+  background: transparent;
+}
+
 button,
 input,
 select {
@@ -206,8 +213,6 @@ button:disabled {
   background: var(--surface);
   box-shadow: var(--shadow);
   isolation: isolate;
-  backdrop-filter: blur(30px) saturate(1.18);
-  -webkit-backdrop-filter: blur(30px) saturate(1.18);
 }
 
 .compact-shell::before {
@@ -1423,7 +1428,6 @@ button.current-card:active {
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .compact-shell,
   .setup-card,
   .dialog-backdrop {
     backdrop-filter: none;

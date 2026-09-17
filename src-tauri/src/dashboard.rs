@@ -101,6 +101,12 @@ pub async fn set_collection_status(
 #[allow(clippy::needless_pass_by_value)]
 /// Shows the full history window and optionally requests a segment.
 ///
+/// The app runs as a macOS accessory (menu bar only), which its floating compact panel is happy
+/// with but a regular window is not: an accessory app never becomes active, so the history
+/// window renders while silently ignoring every click. Becoming a regular app for as long as
+/// that window is open is what makes it accept input; `crate::windows` restores the accessory
+/// policy once it closes.
+///
 /// # Errors
 ///
 /// Returns an error when the history window is absent or cannot be shown or focused.
@@ -108,6 +114,9 @@ pub fn open_history_window(app: AppHandle, segment_id: Option<String>) -> Result
     let window = app
         .get_webview_window("history")
         .ok_or_else(|| "history window was not created".to_owned())?;
+    #[cfg(target_os = "macos")]
+    app.set_activation_policy(tauri::ActivationPolicy::Regular)
+        .map_err(|error| error.to_string())?;
     window.show().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())?;
     if let Some(segment_id) = segment_id {

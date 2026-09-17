@@ -21,8 +21,12 @@ export function CompactView({ initial }: { initial?: DashboardSnapshot }) {
     );
   }
 
-  const canToggle = snapshot.status !== 'permission_needed' && snapshot.status !== 'error';
+  // A permission-needed status is retryable: clicking again re-requests the system permission
+  // (showing the trust prompt if it's still missing) rather than leaving the user stuck with no
+  // path forward once collection has failed once.
+  const canToggle = snapshot.status !== 'error';
   const isRecording = snapshot.status === 'recording';
+  const needsPermission = snapshot.status === 'permission_needed';
 
   return (
     <main className="compact-shell" aria-label="OpenHistory compact timeline">
@@ -34,7 +38,13 @@ export function CompactView({ initial }: { initial?: DashboardSnapshot }) {
         <div className="header-actions">
           <StatusBadge status={snapshot.status} />
           <IconButton
-            label={isRecording ? 'Pause collection' : 'Resume collection'}
+            label={
+              needsPermission
+                ? 'Grant Accessibility permission'
+                : isRecording
+                  ? 'Pause collection'
+                  : 'Resume collection'
+            }
             onClick={() => void toggleCollection()}
             disabled={!canToggle}
           >

@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::{
     App, AppHandle, Manager, PhysicalPosition,
     image::Image,
@@ -5,6 +7,52 @@ use tauri::{
 };
 
 use crate::preferences::TrayIconStyle;
+
+/// Authoritative visibility state for the compact panel, plus a one-shot blur suppressor.
+///
+/// `WebviewWindow::is_visible` cannot drive the tray toggle: a borderless, transparent macOS
+/// window that was ordered out still reports itself visible in some states, which strands the
+/// toggle in its hide branch and leaves the panel permanently unopenable. Every show and hide
+/// goes through this state instead, so the toggle always knows what it last did.
+///
+/// `ignore_next_blur` covers the other half of the same interaction: clicking the tray icon
+/// while the panel has focus makes macOS resign its key-window status, and that blur would
+/// otherwise race the click's own toggle. A blur arriving right after a tray click is a side
+/// effect of that click, not a genuine click-elsewhere dismissal, so it is dropped once.
+#[derive(Default)]
+pub struct CompactPanel {
+    shown: AtomicBool,
+    ignore_next_blur: AtomicBool,
+}
+
+impl CompactPanel {
+    fn is_shown(&self) -> bool {
+        self.shown.load(Ordering::Acquire)
+    }
+
+    fn set_shown(&self, shown: bool) {
+        self.shown.store(shown, Ordering::Release);
+    }
+
+    /// Records that a blur immediately following a tray click should not auto-hide the panel.
+    fn arm_ignore_next_blur(&self) {
+        self.ignore_next_blur.store(true, Ordering::Release);
+    }
+
+    fn disarm_ignore_next_blur(&self) {
+        self.ignore_next_blur.store(false, Ordering::Release);
+    }
+
+    /// Consumes the flag: returns whether a blur happening right now should be ignored.
+    pub fn consume_ignored_blur(&self) -> bool {
+        self.ignore_next_blur.swap(false, Ordering::AcqRel)
+    }
+
+    /// Records that the panel was hidden by something other than the tray toggle.
+    pub fn note_hidden(&self) {
+        self.set_shown(false);
+    }
+}
 
 /// A monochrome sparkle glyph on a transparent background, distinct from the
 /// full-color, fully-opaque app icon: macOS template mode discards color and
@@ -88,7 +136,12 @@ fn toggle_compact(app: &AppHandle, anchor: PhysicalPosition<f64>) -> tauri::Resu
     let Some(window) = app.get_webview_window("compact") else {
         return Ok(());
     };
-    if window.is_visible()? {
+    let Some(panel) = app.try_state::<CompactPanel>() else {
+        return Ok(());
+    };
+    panel.arm_ignore_next_blur();
+    if panel.is_shown() {
+        panel.set_shown(false);
         window.hide()?;
         return Ok(());
     }
@@ -124,6 +177,8 @@ fn toggle_compact(app: &AppHandle, anchor: PhysicalPosition<f64>) -> tauri::Resu
     }
     window.show()?;
     window.set_focus()?;
+    panel.set_shown(true);
+    panel.disarm_ignore_next_blur();
     Ok(())
 }
 

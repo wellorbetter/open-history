@@ -9,7 +9,7 @@ use openhistory_adapters::{ActivityAdapter, AdapterError, bounded_event_channel}
 use openhistory_domain::EventEnvelope;
 use openhistory_entities::ProjectRegistry;
 use openhistory_platform::{
-    CaptureDetail, CollectionGate, PlatformAdapter, platform_permission_granted,
+    CaptureDetail, CollectionGate, PlatformAdapter, request_platform_permission,
 };
 use openhistory_privacy::PrivacyPolicy;
 use openhistory_segmentation::{SegmentationSettings, TaskSegment, segment_events};
@@ -117,12 +117,17 @@ impl CollectorRuntime {
 
     /// Starts collection only as a direct result of the user's recording action.
     ///
+    /// Requesting permission here (rather than merely probing it) is deliberate: this only runs
+    /// when the user has just clicked to start collection, so it is the correct moment to show
+    /// the system trust prompt if it hasn't been granted yet. Already-trusted processes see no
+    /// prompt at all.
+    ///
     /// # Errors
     ///
     /// Returns an adapter error when permission is absent or collection is unavailable.
     pub async fn start(&self, app: AppHandle) -> Result<(), AdapterError> {
         self.stop().await?;
-        let permission = platform_permission_granted();
+        let permission = request_platform_permission();
         let mut adapter = self.adapter.lock().await;
         adapter.set_gate(CollectionGate {
             consented: true,

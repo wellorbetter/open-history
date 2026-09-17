@@ -21,11 +21,14 @@ describe('CompactView', () => {
     await waitFor(() => expect(screen.getByText('Recording')).toBeVisible());
   });
 
-  it('keeps permission errors actionable without presenting a resume action', () => {
+  it('recovers from a permission-needed status by retrying the same control', async () => {
     const snapshot = structuredClone(dashboardFixture);
     snapshot.status = 'permission_needed';
     render(<CompactView initial={snapshot} />);
     expect(screen.getByText('Permission needed')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Resume collection' })).toBeDisabled();
+    const retry = screen.getByRole('button', { name: 'Grant Accessibility permission' });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByText('Recording')).toBeVisible());
   });
 });

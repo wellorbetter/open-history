@@ -390,6 +390,29 @@ pub const fn platform_permission_granted() -> bool {
     false
 }
 
+/// Shows the native system permission prompt when not already granted, and returns whether the
+/// process is trusted afterward. A no-op probe (identical to `platform_permission_granted`) on
+/// platforms with no equivalent trust prompt.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn request_platform_permission() -> bool {
+    macos::request_permission()
+}
+
+/// Windows UI Automation does not use the macOS-style trust prompt.
+#[cfg(target_os = "windows")]
+#[must_use]
+pub const fn request_platform_permission() -> bool {
+    true
+}
+
+/// Unsupported targets cannot collect semantic platform events.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[must_use]
+pub const fn request_platform_permission() -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use openhistory_adapters::bounded_event_channel;

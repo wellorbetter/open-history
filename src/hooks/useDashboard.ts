@@ -43,7 +43,7 @@ export function useDashboard(initial?: DashboardSnapshot): DashboardState {
   }, [initial, reload]);
 
   const toggleCollection = useCallback(async () => {
-    if (!snapshot || snapshot.status === 'permission_needed') return;
+    if (!snapshot) return;
     const next: CollectionStatus = snapshot.status === 'recording' ? 'paused' : 'recording';
     const status = await bridge.setCollectionStatus(next);
     setSnapshot((current) => (current ? { ...current, status } : current));

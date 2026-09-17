@@ -20,6 +20,10 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleNavigation);
   }, []);
 
+  useEffect(() => {
+    document.documentElement.dataset.surface = surface;
+  }, [surface]);
+
   if (surface === 'history') return <FullHistoryView />;
   if (surface === 'setup') return <SetupView />;
   if (surface === 'preview') return <PreviewGallery />;

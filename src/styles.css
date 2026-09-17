@@ -708,6 +708,41 @@ button.current-card:active {
   gap: 6px;
 }
 
+/* Wraps the native date input so it reads as one of the toolbar's icon buttons. The input itself
+   stays a real date input: it keeps the system picker, the keyboard behaviour, and the `max` that
+   refuses a day that has not happened. */
+.date-field {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.date-field:hover {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.date-field:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus), transparent 76%);
+}
+
+.date-field input {
+  width: 104px;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+}
+
 .search-field {
   display: flex;
   min-height: 36px;

@@ -27,8 +27,14 @@ const delay = (milliseconds = 80) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 
 export const bridge = {
-  async snapshot(): Promise<DashboardSnapshot> {
-    if (isTauri()) return invoke<DashboardSnapshot>('get_dashboard');
+  /**
+   * Reads one local day's projection. `date` is `YYYY-MM-DD`; omitted means today.
+   *
+   * The fixture route answers with today's fixture whatever day is asked for, and says so through
+   * `selectedDate` so a surface never captions it with a day it does not hold.
+   */
+  async snapshot(date?: string): Promise<DashboardSnapshot> {
+    if (isTauri()) return invoke<DashboardSnapshot>('get_dashboard', { date });
     await delay();
     return structuredClone(dashboardFixture);
   },
@@ -58,8 +64,8 @@ export const bridge = {
    * it sends the row's evidence to that agent's vendor. Outside the native app there is no agent to
    * ask, so this rejects rather than inventing an answer the fixtures could not have produced.
    */
-  async interpretActivity(segmentId: string): Promise<Interpretation> {
-    if (isTauri()) return invoke<Interpretation>('interpret_activity', { segmentId });
+  async interpretActivity(segmentId: string, date?: string): Promise<Interpretation> {
+    if (isTauri()) return invoke<Interpretation>('interpret_activity', { segmentId, date });
     await delay(200);
     throw new Error('a coding agent can only be asked from the desktop app');
   },

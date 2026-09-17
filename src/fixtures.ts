@@ -249,7 +249,6 @@ export const dashboardFixture: DashboardSnapshot = {
   current: timelineFixture[0],
   timeline: timelineFixture,
   privacy: {
-    rawRetentionHours: 48,
     excludedApplications: ['1Password', 'Keychain Access'],
     localAiEnabled: false,
     localApiEnabled: false,

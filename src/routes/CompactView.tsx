@@ -99,7 +99,9 @@ export function CompactView({ initial }: { initial?: DashboardSnapshot }) {
       </section>
 
       <footer className="compact-footer">
-        <span>Local-only · raw events expire in {snapshot.privacy.rawRetentionHours}h</span>
+        {/* No expiry is claimed, because nothing expires: the app runs no retention pass, so the
+            only thing that removes history is deleting it. */}
+        <span>Local-only · kept until you delete it</span>
         {updatedAt && (
           <span aria-label={`Last synchronized at ${updatedAt.toLocaleTimeString('en-US')}`}>
             Updated{' '}

@@ -129,6 +129,21 @@ pub trait DatabaseKeyProvider {
     fn save(&self, key: &DatabaseKey) -> Result<(), StorageError>;
 }
 
+/// Where the database key lives in the OS credential store.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const KEY_SERVICE: &str = "app.openhistory.database";
+
+/// Marks the account this build stored the key under itself.
+///
+/// macOS decides whether to interrupt the user by comparing the asking program against the keychain
+/// item's access list, and it seeds that list with whichever program *created* the item. A key
+/// inherited from a differently signed build is therefore read behind a dialog every single launch,
+/// and the only way to add a program to an existing list is a second dialog demanding the login
+/// password. Storing the key in an item this build creates sidesteps both: the creator is trusted
+/// automatically, so the key is read in silence from then on.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const SELF_CREATED_SUFFIX: &str = ".self-created";
+
 /// Keychain/Credential Manager key provider for supported desktop targets.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub struct OsDatabaseKeyProvider {
@@ -145,24 +160,45 @@ impl OsDatabaseKeyProvider {
         }
     }
 
-    fn entry(&self) -> Result<keyring::Entry, StorageError> {
-        keyring::Entry::new("app.openhistory.database", &self.account)
-            .map_err(|_| StorageError::CredentialStore)
+    /// The account this build writes to, and reads from first.
+    fn own_account(&self) -> String {
+        format!("{}{SELF_CREATED_SUFFIX}", self.account)
+    }
+
+    fn entry(account: &str) -> Result<keyring::Entry, StorageError> {
+        keyring::Entry::new(KEY_SERVICE, account).map_err(|_| StorageError::CredentialStore)
+    }
+
+    fn read(account: &str) -> Result<Option<DatabaseKey>, StorageError> {
+        match Self::entry(account)?.get_password() {
+            Ok(value) => DatabaseKey::parse(&value).map(Some),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(_) => Err(StorageError::CredentialStore),
+        }
     }
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 impl DatabaseKeyProvider for OsDatabaseKeyProvider {
     fn load(&self) -> Result<Option<DatabaseKey>, StorageError> {
-        match self.entry()?.get_password() {
-            Ok(value) => DatabaseKey::parse(&value).map(Some),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(_) => Err(StorageError::CredentialStore),
+        if let Some(key) = Self::read(&self.own_account())? {
+            return Ok(Some(key));
         }
+        // Nothing of this build's own, so a key stored by an earlier one is moved across. Reading it
+        // costs one approval, this once; writing the copy costs none, and the copy is what every
+        // later launch reads. The original is left in place because deleting a keychain item needs
+        // its own authorization, which would spend the interruption this is trying to end.
+        let Some(inherited) = Self::read(&self.account)? else {
+            return Ok(None);
+        };
+        // A failed copy is not worth failing the launch over: the key is in hand and the database
+        // will open. The only cost is being asked again next time, which is the status quo.
+        let _ = self.save(&inherited);
+        Ok(Some(inherited))
     }
 
     fn save(&self, key: &DatabaseKey) -> Result<(), StorageError> {
-        self.entry()?
+        Self::entry(&self.own_account())?
             .set_password(key.expose_for_store())
             .map_err(|_| StorageError::CredentialStore)
     }

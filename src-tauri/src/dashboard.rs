@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use chrono::{DateTime, FixedOffset, Local};
+use chrono::{DateTime, FixedOffset, Local, NaiveDate};
 use openhistory_segmentation::{SegmentConfidence, SegmentTitle, TaskSegment};
 use openhistory_summaries::{Summarizer, SummaryRequest};
 use serde::{Deserialize, Serialize};
@@ -60,21 +60,25 @@ impl DashboardState {
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
-/// Returns the least-sensitive dashboard projection.
+/// Returns the least-sensitive dashboard projection for one local day.
+///
+/// `date` is `YYYY-MM-DD` in the machine's own time zone, and defaults to today.
 ///
 /// # Errors
 ///
-/// Returns an error when the collection state lock is unavailable.
+/// Returns an error when `date` is not a date, or the collection state lock is unavailable.
 pub fn get_dashboard(
+    date: Option<String>,
     state: State<'_, DashboardState>,
     runtime: State<'_, crate::runtime::CollectorRuntime>,
     app: AppHandle,
 ) -> Result<Value, String> {
+    let day = requested_day(date.as_deref())?;
     let status = *state
         .status
         .lock()
         .map_err(|_| "collection state is unavailable".to_owned())?;
-    let segments = match runtime.today_segments() {
+    let segments = match runtime.segments_for(day) {
         Ok(segments) => segments,
         // Only "not open yet" is allowed to degrade, and it degrades into `storageReady: false`
         // below rather than into silence. A real storage failure is still an error the user sees.
@@ -82,7 +86,7 @@ pub fn get_dashboard(
         Err(error) => return Err(error.to_string()),
     };
     let bucket = crate::preferences::load(&app).timeline_bucket;
-    let mut snapshot = today_snapshot(status, &segments, bucket);
+    let mut snapshot = day_snapshot(status, &segments, bucket, day);
     // Storage opens on a background thread, so early frames can arrive before the key is
     // available — and if the credential store is asking for a password, that lasts as long as the
     // user takes to answer. Saying the day is empty would be a claim about the day; this says only
@@ -91,6 +95,18 @@ pub fn get_dashboard(
     snapshot["recordedEventCount"] = json!(runtime.event_count());
     snapshot["storageBytes"] = json!(runtime.storage_bytes());
     Ok(snapshot)
+}
+
+/// Resolves which local day a caller asked for.
+///
+/// An unparseable date is refused rather than quietly answered with today's history under the
+/// requested day's heading, which would caption one day's work with another's date.
+fn requested_day(date: Option<&str>) -> Result<NaiveDate, String> {
+    match date {
+        None => Ok(Local::now().date_naive()),
+        Some(value) => NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .map_err(|_| format!("{value} is not a date")),
+    }
 }
 
 #[tauri::command]
@@ -360,23 +376,26 @@ fn interpretation_request(entry: &BucketedActivity, id: &str) -> SummaryRequest 
 ///
 /// # Errors
 ///
-/// Returns an error when no agent is installed, the row is no longer in today's history, the agent
-/// cannot be run or times out, or its answer is not grounded in the evidence it was given.
+/// Returns an error when no agent is installed, `date` is not a date, the row is no longer in that
+/// day's history, the agent cannot be run or times out, or its answer is not grounded in the
+/// evidence it was given.
 pub async fn interpret_activity(
     segment_id: String,
+    date: Option<String>,
     runtime: State<'_, crate::runtime::CollectorRuntime>,
     app: AppHandle,
 ) -> Result<Interpretation, String> {
     let agent = crate::agent::LocalAgent::detect()
         .ok_or_else(|| "no coding agent command was found on this Mac".to_owned())?;
+    let day = requested_day(date.as_deref())?;
     let segments = runtime
-        .today_segments()
+        .segments_for(day)
         .map_err(|error| error.to_string())?;
     let bucket = crate::preferences::load(&app).timeline_bucket;
     let entry = bucketed(&segments, bucket, None)
         .into_iter()
         .find(|entry| window_id(entry) == segment_id)
-        .ok_or_else(|| "that stretch is no longer in today's history".to_owned())?;
+        .ok_or_else(|| "that stretch is no longer in this day's history".to_owned())?;
     let request = interpretation_request(&entry, &segment_id);
     let output = agent
         .summarize(&request)
@@ -389,18 +408,21 @@ pub async fn interpret_activity(
     })
 }
 
-/// Builds today's dashboard projection from deterministically segmented, already-persisted
+/// Builds one day's dashboard projection from deterministically segmented, already-persisted
 /// events. Segments carry only what was actually observed: an unresolved project stays
 /// "General" rather than guessing, and there is no generated text anywhere in this path.
-fn today_snapshot(
+fn day_snapshot(
     status: CollectionStatus,
     segments: &[TaskSegment],
     bucket: TimelineBucket,
+    day: NaiveDate,
 ) -> Value {
     let now = Local::now();
     let ongoing_boundary = chrono::Duration::minutes(5);
-    // Only a recording collector can honestly extend its newest observation to the present moment.
-    let open_end = if status == CollectionStatus::Recording {
+    let is_today = day == now.date_naive();
+    // Only a recording collector looking at today can honestly extend its newest observation to the
+    // present moment. Doing it on a past day would grow a finished stretch by every hour since.
+    let open_end = if status == CollectionStatus::Recording && is_today {
         Some(now.fixed_offset())
     } else {
         None
@@ -408,6 +430,7 @@ fn today_snapshot(
     let buckets = bucketed(segments, bucket, open_end);
     let is_ongoing = |entry: &BucketedActivity| {
         status == CollectionStatus::Recording
+            && is_today
             && now.signed_duration_since(entry.ended_at) <= ongoing_boundary
     };
 
@@ -424,12 +447,13 @@ fn today_snapshot(
 
     json!({
         "status": status,
-        "selectedDate": now.format("%Y-%m-%d").to_string(),
-        "isToday": true,
+        "selectedDate": day.format("%Y-%m-%d").to_string(),
+        "isToday": is_today,
         "current": current,
         "timeline": timeline,
         "privacy": {
-            "rawRetentionHours": 48,
+            // No retention window is reported because none is enforced: nothing in this app runs a
+            // retention sweep, so a number here would be a promise the code does not keep.
             "excludedApplications": ["1Password", "Keychain Access"],
             "localAiEnabled": false,
             "localApiEnabled": false,
@@ -724,6 +748,15 @@ mod tests {
     };
     use openhistory_segmentation::{SegmentationSettings, segment_events};
 
+    /// Most of these tests are about today, which is what the surface opens on.
+    fn today_snapshot(
+        status: CollectionStatus,
+        segments: &[TaskSegment],
+        bucket: TimelineBucket,
+    ) -> Value {
+        day_snapshot(status, segments, bucket, Local::now().date_naive())
+    }
+
     fn window_event(minutes_offset: i64, project_id: Option<&str>) -> EventEnvelope {
         let occurred_at = Local::now().fixed_offset() + chrono::Duration::minutes(minutes_offset);
         EventEnvelope::new(
@@ -783,6 +816,47 @@ mod tests {
         assert_eq!(timeline[0]["sources"][0]["name"], "Visual Studio Code");
         assert_eq!(timeline[0]["sources"][0]["kind"], "editor");
         assert_eq!(timeline[0]["state"], "complete");
+    }
+
+    /// A day that has ended has nothing in progress in it. Recording says something about now, and
+    /// carrying that into a past day would report a finished stretch as still running and keep
+    /// growing it by every hour since.
+    #[test]
+    fn a_past_day_is_never_recording_in_progress() {
+        let events = vec![window_event(0, None)];
+        let segments = segment_events(&events, SegmentationSettings::default());
+        let yesterday = Local::now()
+            .date_naive()
+            .pred_opt()
+            .expect("yesterday exists");
+
+        let snapshot = day_snapshot(
+            CollectionStatus::Recording,
+            &segments,
+            TimelineBucket::default(),
+            yesterday,
+        );
+        assert_eq!(snapshot["isToday"], false);
+        assert_eq!(snapshot["selectedDate"], yesterday.to_string());
+        assert!(
+            snapshot["current"].is_null(),
+            "a past day cannot have something in progress"
+        );
+    }
+
+    /// Answering an unparseable date with today's history under that date's heading would caption
+    /// one day's work with another's.
+    #[test]
+    fn a_date_that_is_not_a_date_is_refused() {
+        assert_eq!(
+            requested_day(None).expect("today always parses"),
+            Local::now().date_naive()
+        );
+        assert_eq!(
+            requested_day(Some("2026-09-16")).expect("an ISO date parses"),
+            NaiveDate::from_ymd_opt(2026, 9, 16).expect("a real date")
+        );
+        assert!(requested_day(Some("last tuesday")).is_err());
     }
 
     #[test]

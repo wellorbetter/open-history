@@ -304,15 +304,18 @@ impl CollectorRuntime {
         Ok(report.raw_events)
     }
 
-    /// Deterministically segments today's persisted events for dashboard projection.
+    /// Deterministically segments one local day's persisted events for dashboard projection.
     ///
     /// # Errors
     ///
     /// Returns a storage error if the encrypted database cannot be read.
-    pub fn today_segments(&self) -> Result<Vec<TaskSegment>, StorageError> {
+    pub fn segments_for(&self, day: chrono::NaiveDate) -> Result<Vec<TaskSegment>, StorageError> {
         let now = chrono::Local::now();
-        let today = now.date_naive();
-        let Some(midnight) = today.and_hms_opt(0, 0, 0) else {
+        // The read starts a day early on purpose. It is the local-date filter below that decides
+        // what belongs to `day`; the only job of this bound is to not exclude any of it, and a
+        // bound computed with today's UTC offset can land after the target day's midnight when
+        // daylight saving moved in between, silently clipping its first hour.
+        let Some(midnight) = day.pred_opt().unwrap_or(day).and_hms_opt(0, 0, 0) else {
             return Ok(Vec::new());
         };
         let start = midnight
@@ -322,7 +325,7 @@ impl CollectorRuntime {
         let events: Vec<EventEnvelope> = self
             .with_database(|database| Ok(database.events_since(start)))?
             .into_iter()
-            .filter(|event| event.occurred_at.date_naive() == today)
+            .filter(|event| event.occurred_at.date_naive() == day)
             .collect();
         Ok(segment_events(&events, SegmentationSettings::default()))
     }
@@ -360,7 +363,7 @@ mod tests {
             CaptureDetail::default(),
         );
         assert!(matches!(
-            runtime.today_segments(),
+            runtime.segments_for(chrono::Local::now().date_naive()),
             Err(StorageError::NotInitialized)
         ));
         assert!(matches!(

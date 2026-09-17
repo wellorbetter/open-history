@@ -14,7 +14,15 @@ export interface DashboardState {
   retry: () => void;
 }
 
-export function useDashboard(initial?: DashboardSnapshot): DashboardState {
+/**
+ * Reads one local day's projection and keeps it fresh.
+ *
+ * `date` is `YYYY-MM-DD`; leaving it out asks for today, and keeps asking for today, so a surface
+ * left open overnight follows the date rather than freezing on the day it was opened. While a newly
+ * requested day is in flight the previous one stays on screen — it is captioned with its own
+ * `selectedDate`, so what is shown never disagrees with what it says it is.
+ */
+export function useDashboard(initial?: DashboardSnapshot, date?: string): DashboardState {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | undefined>(initial);
   const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState<string>();
@@ -25,7 +33,7 @@ export function useDashboard(initial?: DashboardSnapshot): DashboardState {
     if (initial) return;
     let active = true;
     bridge
-      .snapshot()
+      .snapshot(date)
       .then((next) => {
         if (active) {
           setSnapshot(next);
@@ -42,7 +50,7 @@ export function useDashboard(initial?: DashboardSnapshot): DashboardState {
     return () => {
       active = false;
     };
-  }, [initial, reload]);
+  }, [date, initial, reload]);
 
   // Collection keeps running while a window is hidden, so a snapshot taken when the window first
   // loaded is stale by the time it is looked at again. Refetch whenever this surface becomes

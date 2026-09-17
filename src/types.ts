@@ -43,7 +43,6 @@ export interface ActivitySegment {
 }
 
 export interface PrivacySettings {
-  rawRetentionHours: 0 | 12 | 24 | 48;
   excludedApplications: string[];
   localAiEnabled: boolean;
   localApiEnabled: boolean;

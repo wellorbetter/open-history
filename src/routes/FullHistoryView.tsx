@@ -3,11 +3,11 @@ import {
   CalendarDays,
   CalendarRange,
   ChevronLeft,
+  ChevronRight,
   Clock,
   Download,
   Ellipsis,
   FileClock,
-  Filter,
   Gauge,
   History,
   Palette,
@@ -48,7 +48,10 @@ export function FullHistoryView({
   initial?: DashboardSnapshot;
   weeks?: WeekDigest[];
 }) {
-  const { snapshot, loading, error, unlocking, retry } = useDashboard(initial);
+  // Undefined means today, and keeps meaning today: a window left open overnight rolls over instead
+  // of pinning itself to the day it was opened.
+  const [date, setDate] = useState<string>();
+  const { snapshot, loading, error, unlocking, retry } = useDashboard(initial, date);
 
   if (loading || !snapshot || unlocking) {
     return (
@@ -62,17 +65,47 @@ export function FullHistoryView({
     );
   }
 
-  return <LoadedFullHistoryView initial={snapshot} weeks={weeks} onDeleted={retry} />;
+  return (
+    <LoadedFullHistoryView
+      initial={snapshot}
+      weeks={weeks}
+      onDeleted={retry}
+      onSelectDate={setDate}
+    />
+  );
+}
+
+/** Today, as the local `YYYY-MM-DD` the backend also speaks. */
+function localDay(at: Date) {
+  return [
+    at.getFullYear(),
+    String(at.getMonth() + 1).padStart(2, '0'),
+    String(at.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+/**
+ * Moves a `YYYY-MM-DD` day by whole days.
+ *
+ * Arithmetic happens at midday so that a daylight-saving change, which shortens or lengthens one
+ * local day, cannot make "the day before" land back on the same date.
+ */
+function shiftDay(date: string, days: number) {
+  const at = new Date(`${date}T12:00:00`);
+  at.setDate(at.getDate() + days);
+  return localDay(at);
 }
 
 function LoadedFullHistoryView({
   initial,
   weeks,
   onDeleted,
+  onSelectDate,
 }: {
   initial: DashboardSnapshot;
   weeks: WeekDigest[];
   onDeleted: () => void;
+  onSelectDate: (date: string) => void;
 }) {
   const requestedSegment = new URLSearchParams(window.location.search).get('segment');
   const [section, setSection] = useState<FullSection>('history');
@@ -173,12 +206,35 @@ function LoadedFullHistoryView({
                 <h1>{dayHeading}</h1>
               </div>
               <div className="toolbar-actions">
-                <IconButton label="Previous day" quiet>
+                <IconButton
+                  label="Previous day"
+                  quiet
+                  onClick={() => onSelectDate(shiftDay(initial.selectedDate, -1))}
+                >
                   <ChevronLeft size={18} />
                 </IconButton>
-                <IconButton label="Choose date" quiet>
-                  <CalendarDays size={17} />
+                <IconButton
+                  label="Next day"
+                  quiet
+                  disabled={initial.isToday}
+                  onClick={() => onSelectDate(shiftDay(initial.selectedDate, 1))}
+                >
+                  <ChevronRight size={18} />
                 </IconButton>
+                {/* A native date input rather than a button that opens something custom: it is
+                    keyboard-navigable, localized, and cannot offer a day that has not happened. */}
+                <label className="date-field" title="Choose date">
+                  <CalendarDays size={17} aria-hidden="true" />
+                  <span className="sr-only">Choose date</span>
+                  <input
+                    type="date"
+                    value={initial.selectedDate}
+                    max={localDay(new Date())}
+                    onChange={(event) => {
+                      if (event.target.value) onSelectDate(event.target.value);
+                    }}
+                  />
+                </label>
               </div>
             </header>
             <label className="search-field">
@@ -190,7 +246,6 @@ function LoadedFullHistoryView({
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search tasks and summaries"
               />
-              <Filter size={15} aria-hidden="true" />
             </label>
             <div className="history-results" aria-live="polite">
               {segments.map((segment) => (
@@ -204,14 +259,34 @@ function LoadedFullHistoryView({
               {!segments.length && (
                 <div className="empty-results">
                   <Search size={22} aria-hidden="true" />
-                  <strong>No matching history</strong>
-                  <span>Try a broader task or summary phrase.</span>
+                  {/* A day with nothing in it and a search that matched nothing are different
+                      findings, and only one of them is about the search. */}
+                  {query.trim() ? (
+                    <>
+                      <strong>No matching history</strong>
+                      <span>Try a broader task or summary phrase.</span>
+                    </>
+                  ) : (
+                    <>
+                      <strong>Nothing was recorded on {dayHeading}</strong>
+                      <span>
+                        {initial.isToday
+                          ? 'Activity appears here as it is observed.'
+                          : 'Either collection was off, or this Mac was not in use.'}
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
             </div>
           </section>
 
-          <TaskInspector segment={selected} onDelete={() => setDeleteScope('today')} />
+          <TaskInspector
+            segment={selected}
+            date={initial.selectedDate}
+            isToday={initial.isToday}
+            onDelete={() => setDeleteScope('today')}
+          />
         </>
       )}
 
@@ -259,7 +334,7 @@ function HistoryResult({
 }
 
 // Asks a coding agent on this machine what a window was about, on an explicit click.
-function AgentReading({ segment }: { segment: ActivitySegment }) {
+function AgentReading({ segment, date }: { segment: ActivitySegment; date: string }) {
   const [reading, setReading] = useState<Interpretation>();
   const [asking, setAsking] = useState(false);
   const [failed, setFailed] = useState<string>();
@@ -268,7 +343,7 @@ function AgentReading({ segment }: { segment: ActivitySegment }) {
     setAsking(true);
     setFailed(undefined);
     try {
-      setReading(await bridge.interpretActivity(segment.id));
+      setReading(await bridge.interpretActivity(segment.id, date));
     } catch (reason) {
       setFailed(reason instanceof Error ? reason.message : 'the agent did not answer');
     } finally {
@@ -310,7 +385,17 @@ function AgentReading({ segment }: { segment: ActivitySegment }) {
   );
 }
 
-function TaskInspector({ segment, onDelete }: { segment?: ActivitySegment; onDelete: () => void }) {
+function TaskInspector({
+  segment,
+  date,
+  isToday,
+  onDelete,
+}: {
+  segment?: ActivitySegment;
+  date: string;
+  isToday: boolean;
+  onDelete: () => void;
+}) {
   if (!segment) {
     return (
       <section className="inspector inspector--empty">
@@ -350,7 +435,7 @@ function TaskInspector({ segment, onDelete }: { segment?: ActivitySegment; onDel
 
       {/* Keyed by the row, so selecting another one starts clean: a reading belongs to the stretch
           it was asked about, and carrying it over would caption one day's work with another's. */}
-      <AgentReading key={segment.id} segment={segment} />
+      <AgentReading key={segment.id} segment={segment} date={date} />
 
       <div className="inspector-section">
         <h3>Sources</h3>
@@ -383,8 +468,17 @@ function TaskInspector({ segment, onDelete }: { segment?: ActivitySegment; onDel
         <button className="secondary-button" type="button">
           <Download size={15} aria-hidden="true" /> Export
         </button>
-        <button className="danger-quiet-button" type="button" onClick={onDelete}>
-          <Trash2 size={15} aria-hidden="true" /> Delete
+        {/* Deletion is expressed as "everything since a moment", so the only day it can remove is
+            the current one. Offering it from a past day would delete a different day than the one
+            being looked at. */}
+        <button
+          className="danger-quiet-button"
+          type="button"
+          onClick={onDelete}
+          disabled={!isToday}
+          title={isToday ? undefined : "Deleting a past day on its own isn't supported yet"}
+        >
+          <Trash2 size={15} aria-hidden="true" /> Delete today
         </button>
       </footer>
     </section>
@@ -412,17 +506,12 @@ function SettingsPanel({
         <SettingsCard
           icon={<ShieldCheck size={19} />}
           title="Privacy and retention"
-          description={`Raw semantic events expire after ${snapshot.privacy.rawRetentionHours} hours.`}
+          description="Nothing is deleted on a schedule yet. What was recorded stays on this device until you delete it."
         >
-          <label className="field-label" htmlFor="retention">
-            Raw event retention
-          </label>
-          <select id="retention" defaultValue={snapshot.privacy.rawRetentionHours}>
-            <option value="0">Do not retain after summary</option>
-            <option value="12">12 hours</option>
-            <option value="24">24 hours</option>
-            <option value="48">48 hours</option>
-          </select>
+          {/* This card used to offer an expiry window and claim that raw events aged out after 48
+              hours. Nothing swept them: the app never runs a retention pass, so the promise was
+              false and the control it was attached to persisted nothing. Saying so is the only
+              version of this card that is true today. */}
           <p className="setting-note">
             Excluded by default: {snapshot.privacy.excludedApplications.join(', ')}
           </p>
@@ -478,8 +567,8 @@ function SettingsPanel({
           <p className="setting-note">
             {snapshot.storageBytes === undefined
               ? 'Stored on this device.'
-              : `Using ${formatBytes(snapshot.storageBytes)} on this device. Expired raw events are
-                 cleared automatically after ${snapshot.privacy.rawRetentionHours} hours.`}
+              : `Using ${formatBytes(snapshot.storageBytes)} on this device. Deleting is the only
+                 thing that removes it.`}
           </p>
           <button className="danger-button" type="button" onClick={onDelete}>
             Delete all history
